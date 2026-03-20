@@ -62,6 +62,11 @@ impl IpPool {
         None // Pool exhausted.
     }
 
+    /// Mark a specific address as allocated (for restoring persisted peers).
+    pub fn allocate_specific(&mut self, addr: Ipv4Addr) {
+        self.assigned.insert(addr);
+    }
+
     /// Release an address back to the pool.
     pub fn release(&mut self, addr: Ipv4Addr) {
         if addr != self.server_addr {

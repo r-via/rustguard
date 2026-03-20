@@ -125,6 +125,7 @@ fn cmd_serve(args: &[String]) {
         pool_prefix: prefix,
         token,
         open_immediately,
+        state_path: Some(rustguard_enroll::state::default_state_path()),
     };
 
     if let Err(e) = rustguard_enroll::server::run(config) {

@@ -19,6 +19,7 @@ use rustguard_tun::{Tun, TunConfig};
 use crate::control::{self, EnrollmentWindow};
 use crate::pool::IpPool;
 use crate::protocol;
+use crate::state::{self, PersistedPeer};
 
 /// A dynamically enrolled peer.
 struct EnrolledPeer {
@@ -36,6 +37,7 @@ struct ServerState {
     pool: IpPool,
     peers: Vec<EnrolledPeer>,
     pending_handshakes: Vec<(u32, std::time::Instant, handshake::InitiatorHandshake)>,
+    state_path: Option<std::path::PathBuf>,
 }
 
 /// Configuration for the enrollment server.
@@ -46,6 +48,8 @@ pub struct ServeConfig {
     pub token: String,
     /// If true, enrollment starts open immediately (legacy behavior).
     pub open_immediately: bool,
+    /// Path to persist enrolled peers. None = no persistence.
+    pub state_path: Option<std::path::PathBuf>,
 }
 
 pub fn run(config: ServeConfig) -> io::Result<()> {
@@ -53,7 +57,7 @@ pub fn run(config: ServeConfig) -> io::Result<()> {
     let our_public = our_static.public_key();
     let our_public_bytes = *our_public.as_bytes();
 
-    let pool = IpPool::new(config.pool_network, config.pool_prefix)
+    let mut pool = IpPool::new(config.pool_network, config.pool_prefix)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid pool CIDR"))?;
 
     let token_key = protocol::derive_token_key(&config.token);
@@ -98,13 +102,40 @@ pub fn run(config: ServeConfig) -> io::Result<()> {
     // Start control socket.
     let sock_path = control::start_listener(Arc::clone(&window), Arc::clone(&peer_count))?;
 
+    // Load persisted peers from previous run.
+    let state_path = config.state_path.clone();
+    let mut restored_peers = Vec::new();
+    if let Some(ref path) = state_path {
+        match state::load(path) {
+            Ok(persisted) => {
+                for p in &persisted {
+                    // Re-register the IP in the pool.
+                    pool.allocate_specific(p.assigned_ip);
+                    restored_peers.push(EnrolledPeer {
+                        public_key: PublicKey::from_bytes(p.public_key),
+                        assigned_ip: p.assigned_ip,
+                        endpoint: None, // Will be learned on next handshake.
+                        session: None,
+                        timers: rustguard_core::timers::SessionTimers::new(),
+                    });
+                }
+                if !persisted.is_empty() {
+                    println!("restored {} peers from {}", persisted.len(), path.display());
+                }
+            }
+            Err(e) => eprintln!("warning: failed to load state: {e}"),
+        }
+    }
+    *peer_count.lock().unwrap() = restored_peers.len();
+
     let state = Arc::new(Mutex::new(ServerState {
         our_static,
         our_public_bytes,
         token_key,
         pool,
-        peers: Vec::new(),
+        peers: restored_peers,
         pending_handshakes: Vec::new(),
+        state_path,
     }));
 
     let running = Arc::new(AtomicBool::new(true));
@@ -224,6 +255,21 @@ pub fn run(config: ServeConfig) -> io::Result<()> {
                     });
 
                     *peer_count_in.lock().unwrap() = st.peers.len();
+
+                    // Persist to disk.
+                    if let Some(ref path) = st.state_path {
+                        let persisted: Vec<PersistedPeer> = st
+                            .peers
+                            .iter()
+                            .map(|p| PersistedPeer {
+                                public_key: *p.public_key.as_bytes(),
+                                assigned_ip: p.assigned_ip,
+                            })
+                            .collect();
+                        if let Err(e) = state::save(path, &persisted) {
+                            eprintln!("warning: failed to save state: {e}");
+                        }
+                    }
                 }
                 continue;
             }
