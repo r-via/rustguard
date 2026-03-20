@@ -6,6 +6,9 @@ mod macos;
 #[cfg(target_os = "linux")]
 mod linux;
 
+#[cfg(target_os = "linux")]
+pub mod xdp;
+
 /// A TUN device that can read and write IP packets.
 ///
 /// On macOS this is a utun interface created via the kernel control socket.
