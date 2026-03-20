@@ -1,19 +1,21 @@
 //! Enrollment server: accepts new peers, assigns IPs, runs the tunnel.
 //!
-//! Enrollment is gated by a time window controlled via the UNIX socket.
-//! By default enrollment is CLOSED. Use `rustguard open [seconds]` to
-//! temporarily allow new peers to join — like Zigbee pairing mode.
+//! Performance-optimized packet path:
+//!   - Peers behind RwLock: concurrent reads for routing, writes only on enrollment
+//!   - Per-peer Mutex: peers don't block each other during encrypt/decrypt
+//!   - Zero-alloc crypto: encrypt/decrypt in pre-allocated stack buffers
+//!   - Lock released before I/O: crypto done while locked, syscalls done unlocked
 
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
 use rustguard_core::handshake;
 use rustguard_core::messages::*;
-use rustguard_crypto::{PublicKey, StaticSecret};
+use rustguard_crypto::{PublicKey, StaticSecret, AEAD_TAG_LEN};
 use rustguard_tun::{Tun, TunConfig};
 
 use crate::control::{self, EnrollmentWindow};
@@ -21,10 +23,13 @@ use crate::pool::IpPool;
 use crate::protocol;
 use crate::state::{self, PersistedPeer};
 
-/// A dynamically enrolled peer.
 struct EnrolledPeer {
     public_key: PublicKey,
     assigned_ip: Ipv4Addr,
+    state: Mutex<PeerState>,
+}
+
+struct PeerState {
     endpoint: Option<SocketAddr>,
     session: Option<rustguard_core::session::TransportSession>,
     timers: rustguard_core::timers::SessionTimers,
@@ -34,21 +39,18 @@ struct ServerState {
     our_static: StaticSecret,
     our_public_bytes: [u8; 32],
     token_key: [u8; 32],
-    pool: IpPool,
-    peers: Vec<EnrolledPeer>,
-    pending_handshakes: Vec<(u32, std::time::Instant, handshake::InitiatorHandshake)>,
+    pool: Mutex<IpPool>,
+    peers: RwLock<Vec<Arc<EnrolledPeer>>>,
+    pending_handshakes: Mutex<Vec<(u32, std::time::Instant, handshake::InitiatorHandshake)>>,
     state_path: Option<std::path::PathBuf>,
 }
 
-/// Configuration for the enrollment server.
 pub struct ServeConfig {
     pub listen_port: u16,
     pub pool_network: Ipv4Addr,
     pub pool_prefix: u8,
     pub token: String,
-    /// If true, enrollment starts open immediately (legacy behavior).
     pub open_immediately: bool,
-    /// Path to persist enrolled peers. None = no persistence.
     pub state_path: Option<std::path::PathBuf>,
 }
 
@@ -62,7 +64,6 @@ pub fn run(config: ServeConfig) -> io::Result<()> {
 
     let token_key = protocol::derive_token_key(&config.token);
 
-    // Create TUN with the server's pool address.
     let tun = Arc::new(Tun::create(&TunConfig {
         name: None,
         mtu: 1420,
@@ -82,10 +83,9 @@ pub fn run(config: ServeConfig) -> io::Result<()> {
         (1u32 << (32 - config.pool_prefix)) - 3
     );
 
-    // Enrollment window — default closed unless --open flag.
     let window = control::new_window();
     if config.open_immediately {
-        control::open_window(&window, 3600); // 1 hour for --open mode.
+        control::open_window(&window, 3600);
         println!("enrollment: OPEN (use `rustguard close` to lock)");
     } else {
         println!("enrollment: CLOSED (use `rustguard open` to allow peers)");
@@ -98,57 +98,55 @@ pub fn run(config: ServeConfig) -> io::Result<()> {
     udp.set_read_timeout(Some(Duration::from_millis(500)))?;
 
     let peer_count = Arc::new(Mutex::new(0usize));
-
-    // Start control socket.
     let sock_path = control::start_listener(Arc::clone(&window), Arc::clone(&peer_count))?;
 
-    // Load persisted peers from previous run.
+    // Restore persisted peers.
     let state_path = config.state_path.clone();
-    let mut restored_peers = Vec::new();
+    let mut restored = Vec::new();
     if let Some(ref path) = state_path {
-        match state::load(path) {
-            Ok(persisted) => {
-                for p in &persisted {
-                    // Re-register the IP in the pool.
-                    pool.allocate_specific(p.assigned_ip);
-                    restored_peers.push(EnrolledPeer {
-                        public_key: PublicKey::from_bytes(p.public_key),
-                        assigned_ip: p.assigned_ip,
-                        endpoint: None, // Will be learned on next handshake.
+        if let Ok(persisted) = state::load(path) {
+            for p in &persisted {
+                pool.allocate_specific(p.assigned_ip);
+                restored.push(Arc::new(EnrolledPeer {
+                    public_key: PublicKey::from_bytes(p.public_key),
+                    assigned_ip: p.assigned_ip,
+                    state: Mutex::new(PeerState {
+                        endpoint: None,
                         session: None,
                         timers: rustguard_core::timers::SessionTimers::new(),
-                    });
-                }
-                if !persisted.is_empty() {
-                    println!("restored {} peers from {}", persisted.len(), path.display());
-                }
+                    }),
+                }));
             }
-            Err(e) => eprintln!("warning: failed to load state: {e}"),
+            if !persisted.is_empty() {
+                println!("restored {} peers from {}", persisted.len(), path.display());
+            }
         }
     }
-    *peer_count.lock().unwrap() = restored_peers.len();
+    *peer_count.lock().unwrap() = restored.len();
 
-    let state = Arc::new(Mutex::new(ServerState {
+    let state = Arc::new(ServerState {
         our_static,
         our_public_bytes,
         token_key,
-        pool,
-        peers: restored_peers,
-        pending_handshakes: Vec::new(),
+        pool: Mutex::new(pool),
+        peers: RwLock::new(restored),
+        pending_handshakes: Mutex::new(Vec::new()),
         state_path,
-    }));
+    });
 
     let running = Arc::new(AtomicBool::new(true));
 
-    // Outbound: TUN -> UDP.
+    // ── Outbound: TUN -> encrypt -> UDP ──
+    // Hot path: read-lock peers, find by IP, per-peer lock for encrypt, send unlocked.
     let tun_out = Arc::clone(&tun);
     let udp_out = Arc::clone(&udp);
     let state_out = Arc::clone(&state);
     let running_out = Arc::clone(&running);
     let outbound = thread::spawn(move || {
-        let mut buf = [0u8; 1500];
+        let mut pkt_buf = [0u8; 1500];
+        let mut ct_buf = [0u8; 1500 + AEAD_TAG_LEN + TRANSPORT_HEADER_SIZE];
         while running_out.load(Ordering::Relaxed) {
-            let n = match tun_out.read(&mut buf) {
+            let n = match tun_out.read(&mut pkt_buf) {
                 Ok(n) => n,
                 Err(_) => continue,
             };
@@ -156,26 +154,39 @@ pub fn run(config: ServeConfig) -> io::Result<()> {
                 continue;
             }
 
-            let dst_ip = Ipv4Addr::new(buf[16], buf[17], buf[18], buf[19]);
-            let mut st = state_out.lock().unwrap();
+            let dst_ip = Ipv4Addr::new(pkt_buf[16], pkt_buf[17], pkt_buf[18], pkt_buf[19]);
 
-            let peer = st.peers.iter_mut().find(|p| p.assigned_ip == dst_ip);
-            if let Some(peer) = peer {
-                if let (Some(endpoint), Some(session)) = (peer.endpoint, &mut peer.session) {
-                    if let Some((counter, ciphertext)) = session.encrypt(&buf[..n]) {
-                        let transport = Transport {
-                            receiver_index: session.their_index,
-                            counter,
-                            payload: ciphertext,
-                        };
-                        let _ = udp_out.send_to(&transport.to_bytes(), endpoint);
-                    }
-                }
-            }
+            // Read-lock: find peer by IP. No contention with other readers.
+            let peers = state_out.peers.read().unwrap();
+            let peer = peers.iter().find(|p| p.assigned_ip == dst_ip);
+            let Some(peer) = peer else { continue };
+            let peer = Arc::clone(peer);
+            drop(peers); // Release read lock immediately.
+
+            // Per-peer lock: encrypt. Other peers aren't blocked.
+            let mut ps = peer.state.lock().unwrap();
+            let (endpoint, their_index) = match (&ps.endpoint, &ps.session) {
+                (Some(ep), Some(s)) => (*ep, s.their_index),
+                _ => continue,
+            };
+
+            let session = ps.session.as_mut().unwrap();
+            let Some((counter, ct_len)) = session.encrypt_to(&pkt_buf[..n], &mut ct_buf[TRANSPORT_HEADER_SIZE..]) else {
+                continue;
+            };
+            drop(ps); // Release peer lock before syscall.
+
+            // Build transport header directly into buffer.
+            ct_buf[0..4].copy_from_slice(&MSG_TRANSPORT.to_le_bytes());
+            ct_buf[4..8].copy_from_slice(&their_index.to_le_bytes());
+            ct_buf[8..16].copy_from_slice(&counter.to_le_bytes());
+            let total = TRANSPORT_HEADER_SIZE + ct_len;
+
+            let _ = udp_out.send_to(&ct_buf[..total], endpoint);
         }
     });
 
-    // Inbound: UDP -> TUN (handles enrollment + WireGuard).
+    // ── Inbound: UDP -> decrypt -> TUN  (+ enrollment + handshake) ──
     let tun_in = Arc::clone(&tun);
     let udp_in = Arc::clone(&udp);
     let state_in = Arc::clone(&state);
@@ -195,141 +206,126 @@ pub fn run(config: ServeConfig) -> io::Result<()> {
                 continue;
             }
 
-            // Enrollment request?
+            // ── Enrollment ──
             if n >= protocol::ENROLL_REQUEST_SIZE && buf[0..4] == [0x52, 0x47, 0x45, 0x01] {
-                // Gate on enrollment window.
                 if !control::is_open(&window_in) {
-                    // Silently drop — enrollment is closed.
                     continue;
                 }
-
-                let mut st = state_in.lock().unwrap();
-                if let Some(client_pubkey) = protocol::parse_request(&st.token_key, &buf[..n]) {
-                    // Already enrolled? Re-send assignment.
-                    let already = st
-                        .peers
-                        .iter()
-                        .any(|p| *p.public_key.as_bytes() == client_pubkey);
-                    if already {
-                        if let Some(peer) = st
-                            .peers
-                            .iter()
-                            .find(|p| *p.public_key.as_bytes() == client_pubkey)
-                        {
-                            let offer = protocol::EnrollmentOffer {
-                                server_pubkey: st.our_public_bytes,
-                                assigned_ip: peer.assigned_ip,
-                                prefix_len: st.pool.prefix_len,
-                            };
-                            let resp = protocol::build_response(&st.token_key, &offer);
-                            let _ = udp_in.send_to(&resp, src_addr);
-                        }
+                if let Some(client_pubkey) = protocol::parse_request(&state_in.token_key, &buf[..n]) {
+                    let peers = state_in.peers.read().unwrap();
+                    let existing = peers.iter().find(|p| *p.public_key.as_bytes() == client_pubkey);
+                    if let Some(peer) = existing {
+                        let offer = protocol::EnrollmentOffer {
+                            server_pubkey: state_in.our_public_bytes,
+                            assigned_ip: peer.assigned_ip,
+                            prefix_len: state_in.pool.lock().unwrap().prefix_len,
+                        };
+                        let resp = protocol::build_response(&state_in.token_key, &offer);
+                        let _ = udp_in.send_to(&resp, src_addr);
                         continue;
                     }
+                    drop(peers);
 
-                    let Some(assigned_ip) = st.pool.allocate() else {
-                        eprintln!("pool exhausted — rejecting enrollment from {src_addr}");
+                    let mut pool = state_in.pool.lock().unwrap();
+                    let Some(assigned_ip) = pool.allocate() else {
+                        eprintln!("pool exhausted");
                         continue;
                     };
+                    let prefix_len = pool.prefix_len;
+                    drop(pool);
 
                     let rem = control::remaining(&window_in);
-                    println!(
-                        "enrolled peer {} -> {assigned_ip} ({rem}s remaining)",
-                        base64_key(&client_pubkey),
-                    );
+                    println!("enrolled peer {} -> {assigned_ip} ({rem}s remaining)", base64_key(&client_pubkey));
 
                     let offer = protocol::EnrollmentOffer {
-                        server_pubkey: st.our_public_bytes,
+                        server_pubkey: state_in.our_public_bytes,
                         assigned_ip,
-                        prefix_len: st.pool.prefix_len,
+                        prefix_len,
                     };
-                    let resp = protocol::build_response(&st.token_key, &offer);
+                    let resp = protocol::build_response(&state_in.token_key, &offer);
                     let _ = udp_in.send_to(&resp, src_addr);
 
-                    st.peers.push(EnrolledPeer {
+                    let new_peer = Arc::new(EnrolledPeer {
                         public_key: PublicKey::from_bytes(client_pubkey),
                         assigned_ip,
-                        endpoint: Some(src_addr),
-                        session: None,
-                        timers: rustguard_core::timers::SessionTimers::new(),
+                        state: Mutex::new(PeerState {
+                            endpoint: Some(src_addr),
+                            session: None,
+                            timers: rustguard_core::timers::SessionTimers::new(),
+                        }),
                     });
 
-                    *peer_count_in.lock().unwrap() = st.peers.len();
+                    let mut peers = state_in.peers.write().unwrap();
+                    peers.push(new_peer);
+                    *peer_count_in.lock().unwrap() = peers.len();
 
-                    // Persist to disk.
-                    if let Some(ref path) = st.state_path {
-                        let persisted: Vec<PersistedPeer> = st
-                            .peers
-                            .iter()
-                            .map(|p| PersistedPeer {
-                                public_key: *p.public_key.as_bytes(),
-                                assigned_ip: p.assigned_ip,
-                            })
-                            .collect();
-                        if let Err(e) = state::save(path, &persisted) {
-                            eprintln!("warning: failed to save state: {e}");
-                        }
+                    if let Some(ref path) = state_in.state_path {
+                        let persisted: Vec<PersistedPeer> = peers.iter().map(|p| PersistedPeer {
+                            public_key: *p.public_key.as_bytes(),
+                            assigned_ip: p.assigned_ip,
+                        }).collect();
+                        let _ = state::save(path, &persisted);
                     }
                 }
                 continue;
             }
 
-            // Standard WireGuard messages — always processed (enrolled peers stay connected).
+            // ── WireGuard messages ──
             let msg_type = u32::from_le_bytes(buf[..4].try_into().unwrap());
 
             match msg_type {
                 MSG_INITIATION if n >= INITIATION_SIZE => {
-                    let msg =
-                        Initiation::from_bytes(buf[..INITIATION_SIZE].try_into().unwrap());
-                    let mut st = state_in.lock().unwrap();
+                    let msg = Initiation::from_bytes(buf[..INITIATION_SIZE].try_into().unwrap());
                     let responder_index = rand_index();
 
                     let result = handshake::process_initiation(
-                        &st.our_static,
-                        &msg,
-                        responder_index,
+                        &state_in.our_static, &msg, responder_index,
                     );
 
                     if let Some((peer_pubkey, _ts, resp_msg, session)) = result {
-                        if let Some(peer) =
-                            st.peers.iter_mut().find(|p| p.public_key == peer_pubkey)
-                        {
-                            peer.session = Some(session);
-                            peer.endpoint = Some(src_addr);
-                            peer.timers.session_started();
+                        let peers = state_in.peers.read().unwrap();
+                        if let Some(peer) = peers.iter().find(|p| p.public_key == peer_pubkey) {
+                            let mut ps = peer.state.lock().unwrap();
+                            ps.session = Some(session);
+                            ps.endpoint = Some(src_addr);
+                            ps.timers.session_started();
+                            drop(ps);
                             let _ = udp_in.send_to(&resp_msg.to_bytes(), src_addr);
-                            println!(
-                                "handshake with {} ({})",
-                                base64_key(peer_pubkey.as_bytes()),
-                                peer.assigned_ip,
-                            );
+                            println!("handshake with {} ({})", base64_key(peer_pubkey.as_bytes()), peer.assigned_ip);
                         }
                     }
                 }
 
                 MSG_TRANSPORT if n >= TRANSPORT_HEADER_SIZE => {
-                    let msg = match Transport::from_bytes(&buf[..n]) {
-                        Some(m) => m,
-                        None => continue,
-                    };
-                    let mut st = state_in.lock().unwrap();
+                    let receiver_index = u32::from_le_bytes(buf[4..8].try_into().unwrap());
+                    let counter = u64::from_le_bytes(buf[8..16].try_into().unwrap());
+                    let ct_len = n - TRANSPORT_HEADER_SIZE;
 
-                    let peer = st.peers.iter_mut().find(|p| {
-                        p.session
-                            .as_ref()
-                            .is_some_and(|s| s.our_index == msg.receiver_index)
+                    // Read-lock to find peer.
+                    let peers = state_in.peers.read().unwrap();
+                    let peer = peers.iter().find(|p| {
+                        let ps = p.state.lock().unwrap();
+                        ps.session.as_ref().is_some_and(|s| s.our_index == receiver_index)
                     });
+                    let Some(peer) = peer else { continue };
+                    let peer = Arc::clone(peer);
+                    drop(peers);
 
-                    if let Some(peer) = peer {
-                        peer.endpoint = Some(src_addr);
-                        if let Some(session) = &mut peer.session {
-                            if let Some(plaintext) =
-                                session.decrypt(msg.counter, &msg.payload)
-                            {
-                                peer.timers.packet_received();
-                                drop(st);
-                                let _ = tun_in.write(&plaintext);
-                            }
+                    // Per-peer lock: decrypt in place.
+                    let mut ps = peer.state.lock().unwrap();
+                    ps.endpoint = Some(src_addr);
+
+                    if let Some(session) = &mut ps.session {
+                        // Decrypt directly in the receive buffer — zero alloc.
+                        let payload_start = TRANSPORT_HEADER_SIZE;
+                        if let Some(pt_len) = session.decrypt_in_place(
+                            counter,
+                            &mut buf[payload_start..],
+                            ct_len,
+                        ) {
+                            ps.timers.packet_received();
+                            drop(ps);
+                            let _ = tun_in.write(&buf[payload_start..payload_start + pt_len]);
                         }
                     }
                 }
@@ -341,8 +337,6 @@ pub fn run(config: ServeConfig) -> io::Result<()> {
 
     outbound.join().unwrap();
     inbound.join().unwrap();
-
-    // Cleanup control socket.
     control::cleanup(&sock_path);
     Ok(())
 }

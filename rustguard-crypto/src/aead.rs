@@ -1,9 +1,12 @@
 use chacha20poly1305::{
-    aead::{Aead, KeyInit, Payload},
+    aead::{Aead, AeadInPlace, KeyInit, Payload},
     ChaCha20Poly1305, Nonce, XChaCha20Poly1305, XNonce,
 };
 
 pub const AEAD_TAG_LEN: usize = 16;
+
+/// Maximum WireGuard transport payload (MTU 1420 + tag).
+pub const MAX_PACKET_SIZE: usize = 1500 + AEAD_TAG_LEN;
 
 /// Encrypt plaintext with ChaCha20-Poly1305.
 ///
@@ -56,6 +59,39 @@ pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) ->
     cipher
         .decrypt(xnonce, Payload { msg: ciphertext, aad })
         .ok()
+}
+
+/// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+/// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+/// Zero allocations.
+pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let len = plaintext.len();
+    buf[..len].copy_from_slice(plaintext);
+    let tag = cipher
+        .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+        .expect("encryption failed");
+    buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+    len + AEAD_TAG_LEN
+}
+
+/// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+/// buf contains ciphertext + tag on input, plaintext on output.
+/// Zero allocations.
+pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+    if ct_len < AEAD_TAG_LEN {
+        return None;
+    }
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let pt_len = ct_len - AEAD_TAG_LEN;
+    let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+    let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+    cipher
+        .decrypt_in_place_detached(&nonce, &[], data, tag)
+        .ok()?;
+    Some(pt_len)
 }
 
 /// WireGuard nonce: 4 bytes of zeros || 8 bytes little-endian counter.

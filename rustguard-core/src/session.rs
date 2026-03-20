@@ -70,6 +70,28 @@ impl TransportSession {
         Some(plaintext)
     }
 
+    /// Zero-alloc encrypt: writes ciphertext into `out` buffer.
+    /// Returns (counter, ciphertext_len) or None if nonce exhausted.
+    /// `out` must be at least `plaintext.len() + 16` bytes.
+    pub fn encrypt_to(&mut self, plaintext: &[u8], out: &mut [u8]) -> Option<(u64, usize)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ct_len = crypto::seal_to(&self.key_send, counter, plaintext, out);
+        Some((counter, ct_len))
+    }
+
+    /// Zero-alloc decrypt: decrypts in place within `buf`.
+    /// `buf[..ct_len]` contains ciphertext+tag on input, plaintext on output.
+    /// Returns plaintext length or None.
+    pub fn decrypt_in_place(&mut self, counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        let pt_len = crypto::open_to(&self.key_recv, counter, buf, ct_len)?;
+        self.recv_window.update(counter);
+        Some(pt_len)
+    }
+
     pub fn send_counter(&self) -> u64 {
         self.send_counter
     }
