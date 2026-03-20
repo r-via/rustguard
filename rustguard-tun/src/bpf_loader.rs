@@ -50,12 +50,19 @@ impl XdpProgram {
 
         // 2. Parse ELF, extract program bytecode, patch map references.
         let insns = parse_and_patch_elf(XDP_WG_OBJ, xsks_map_fd)?;
+        eprintln!("  BPF: parsed ELF, {} insn bytes, map_fd={}", insns.len(), xsks_map_fd);
 
         // 3. Load BPF program.
-        let prog_fd = bpf_prog_load(&insns)?;
+        let prog_fd = bpf_prog_load(&insns).map_err(|e| {
+            io::Error::new(e.kind(), format!("prog_load ({} insns): {e}", insns.len() / 8))
+        })?;
+        eprintln!("  BPF: program loaded, prog_fd={}", prog_fd);
 
         // 4. Attach to interface.
-        attach_xdp(ifindex, prog_fd)?;
+        attach_xdp(ifindex, prog_fd).map_err(|e| {
+            io::Error::new(e.kind(), format!("xdp_attach ifindex={ifindex}: {e}"))
+        })?;
+        eprintln!("  BPF: attached to ifindex={}", ifindex);
 
         Ok(Self {
             prog_fd,
@@ -116,8 +123,11 @@ fn bpf_create_xskmap(max_entries: u32) -> io::Result<i32> {
 
 fn bpf_prog_load(insns: &[u8]) -> io::Result<i32> {
     let license = b"GPL\0";
+    let mut log_buf = vec![0u8; 65536];
 
-    // BPF_PROG_LOAD attr — variable size, we use a fixed layout.
+    // The kernel's bpf_attr union for BPF_PROG_LOAD is large.
+    // We need at least the fields up to kern_version, padded to the
+    // minimum size the kernel accepts. Using 256 bytes to be safe.
     #[repr(C)]
     struct BpfAttrProgLoad {
         prog_type: u32,
@@ -128,6 +138,7 @@ fn bpf_prog_load(insns: &[u8]) -> io::Result<i32> {
         log_size: u32,
         log_buf: u64,
         kern_version: u32,
+        _pad: [u8; 208], // Pad to 256 bytes total.
     }
 
     let attr = BpfAttrProgLoad {
@@ -135,10 +146,11 @@ fn bpf_prog_load(insns: &[u8]) -> io::Result<i32> {
         insn_cnt: (insns.len() / 8) as u32,
         insns: insns.as_ptr() as u64,
         license: license.as_ptr() as u64,
-        log_level: 0,
-        log_size: 0,
-        log_buf: 0,
+        log_level: 1,
+        log_size: log_buf.len() as u32,
+        log_buf: log_buf.as_mut_ptr() as u64,
         kern_version: 0,
+        _pad: [0; 208],
     };
 
     let fd = unsafe {
@@ -151,7 +163,13 @@ fn bpf_prog_load(insns: &[u8]) -> io::Result<i32> {
     } as i32;
 
     if fd < 0 {
-        return Err(io::Error::last_os_error());
+        let err = io::Error::last_os_error();
+        let log_end = log_buf.iter().position(|&b| b == 0).unwrap_or(0);
+        if log_end > 0 {
+            let log_str = String::from_utf8_lossy(&log_buf[..log_end]);
+            eprintln!("  BPF verifier log:\n{log_str}");
+        }
+        return Err(err);
     }
     Ok(fd)
 }
@@ -345,7 +363,6 @@ fn parse_and_patch_elf(elf: &[u8], map_fd: i32) -> io::Result<Vec<u8>> {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "not an ELF"));
     }
 
-    // ELF64 little-endian.
     let e_type = u16::from_le_bytes([elf[16], elf[17]]);
     let e_machine = u16::from_le_bytes([elf[18], elf[19]]);
     if e_type != ET_REL || e_machine != EM_BPF {
@@ -360,21 +377,31 @@ fn parse_and_patch_elf(elf: &[u8], map_fd: i32) -> io::Result<Vec<u8>> {
     let e_shnum = u16::from_le_bytes([elf[60], elf[61]]) as usize;
     let e_shstrndx = u16::from_le_bytes([elf[62], elf[63]]) as usize;
 
-    // Read section headers.
     let shstrtab_off = {
         let sh = &elf[e_shoff + e_shstrndx * e_shentsize..];
         u64::from_le_bytes(sh[24..32].try_into().unwrap()) as usize
     };
 
-    // Find "xdp" section (the program) and "maps" section.
-    let mut prog_insns = None;
+    // Collect section info.
+    struct Section {
+        name: String,
+        sh_type: u32,
+        offset: usize,
+        size: usize,
+        info: u32, // sh_info — for REL sections, points to the target section.
+    }
 
+    let mut sections = Vec::new();
     for i in 0..e_shnum {
         let sh = &elf[e_shoff + i * e_shentsize..];
         let sh_name_off = u32::from_le_bytes(sh[0..4].try_into().unwrap()) as usize;
         let sh_type = u32::from_le_bytes(sh[4..8].try_into().unwrap());
         let sh_offset = u64::from_le_bytes(sh[24..32].try_into().unwrap()) as usize;
         let sh_size = u64::from_le_bytes(sh[32..40].try_into().unwrap()) as usize;
+        let sh_info = u32::from_le_bytes(sh[28..32].try_into().unwrap());
+        // Wait, sh_info is at offset 44 in Elf64_Shdr. Let me recalculate.
+        // Elf64_Shdr: name(4) type(4) flags(8) addr(8) offset(8) size(8) link(4) info(4) addralign(8) entsize(8)
+        let sh_info = u32::from_le_bytes(sh[44..48].try_into().unwrap());
 
         let name_start = shstrtab_off + sh_name_off;
         let name_end = elf[name_start..]
@@ -382,30 +409,60 @@ fn parse_and_patch_elf(elf: &[u8], map_fd: i32) -> io::Result<Vec<u8>> {
             .position(|&b| b == 0)
             .unwrap_or(0)
             + name_start;
-        let name = std::str::from_utf8(&elf[name_start..name_end]).unwrap_or("");
+        let name = std::str::from_utf8(&elf[name_start..name_end])
+            .unwrap_or("")
+            .to_string();
 
-        if name == "xdp" && sh_type == SHT_PROGBITS {
-            prog_insns = Some(elf[sh_offset..sh_offset + sh_size].to_vec());
-        }
+        sections.push(Section {
+            name,
+            sh_type,
+            offset: sh_offset,
+            size: sh_size,
+            info: sh_info,
+        });
     }
 
-    let mut insns = prog_insns.ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidData, "no 'xdp' section in ELF")
-    })?;
+    // Find the "xdp" program section.
+    let prog_idx = sections
+        .iter()
+        .position(|s| s.name == "xdp" && s.sh_type == SHT_PROGBITS)
+        .ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "no 'xdp' section")
+        })?;
+    let prog = &sections[prog_idx];
+    let mut insns = elf[prog.offset..prog.offset + prog.size].to_vec();
 
-    // Patch map fd references. BPF instructions that reference maps use
-    // a LD_IMM64 (opcode 0x18) with src_reg=1 (BPF_PSEUDO_MAP_FD).
-    // We need to set the imm field to our map fd.
-    let mut i = 0;
-    while i + 16 <= insns.len() {
-        let opcode = insns[i];
-        let src_reg = (insns[i + 1] >> 4) & 0xf;
-        if opcode == 0x18 && src_reg == 1 {
-            // LD_IMM64 with BPF_PSEUDO_MAP_FD — patch the fd.
-            insns[i + 4..i + 8].copy_from_slice(&(map_fd as u32).to_le_bytes());
-            i += 16; // LD_IMM64 is two instructions.
-        } else {
-            i += 8;
+    // Find relocation sections targeting the program section.
+    // These tell us which LD_IMM64 instructions reference maps.
+    for sec in &sections {
+        if sec.sh_type != SHT_REL {
+            continue;
+        }
+        if sec.info as usize != prog_idx {
+            continue; // This relocation targets a different section.
+        }
+
+        // Process each relocation entry (Elf64_Rel: offset(8) + info(8) = 16 bytes).
+        let rel_data = &elf[sec.offset..sec.offset + sec.size];
+        let mut off = 0;
+        while off + 16 <= rel_data.len() {
+            let r_offset = u64::from_le_bytes(rel_data[off..off + 8].try_into().unwrap()) as usize;
+            // r_info contains symbol index in upper 32 bits, type in lower 32.
+            // For BPF map refs, the type is R_BPF_64_64 (1).
+
+            // At r_offset in the instruction stream, set src_reg=1 (BPF_PSEUDO_MAP_FD)
+            // and imm=map_fd.
+            if r_offset + 16 <= insns.len() && insns[r_offset] == 0x18 {
+                // Set src_reg to BPF_PSEUDO_MAP_FD (1).
+                insns[r_offset + 1] = (insns[r_offset + 1] & 0x0f) | (1 << 4);
+                // Set imm to map fd.
+                insns[r_offset + 4..r_offset + 8]
+                    .copy_from_slice(&(map_fd as u32).to_le_bytes());
+                // Zero upper 32 bits of the 64-bit immediate.
+                insns[r_offset + 12..r_offset + 16].copy_from_slice(&0u32.to_le_bytes());
+            }
+
+            off += 16;
         }
     }
 

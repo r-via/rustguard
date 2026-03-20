@@ -409,7 +409,11 @@ fn setup_xdp(
     use rustguard_tun::xdp::{XdpConfig, XdpSocket};
 
     // Load and attach BPF program.
-    let prog = XdpProgram::load_and_attach(ifname)?;
+    eprintln!("AF_XDP: loading BPF program...");
+    let prog = XdpProgram::load_and_attach(ifname).map_err(|e| {
+        io::Error::new(e.kind(), format!("BPF load/attach: {e}"))
+    })?;
+    eprintln!("AF_XDP: BPF attached to {ifname}");
 
     // Create AF_XDP socket.
     let xsk = XdpSocket::create(&XdpConfig {
