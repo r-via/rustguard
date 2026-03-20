@@ -26,6 +26,7 @@ pub struct InterfaceConfig {
 #[derive(Debug)]
 pub struct PeerConfig {
     pub public_key: [u8; 32],
+    pub preshared_key: Option<[u8; 32]>,
     pub endpoint: Option<SocketAddr>,
     pub allowed_ips: Vec<CidrAddr>,
     pub persistent_keepalive: Option<u16>,
@@ -176,6 +177,7 @@ fn parse_interface(kvs: &[(&str, &str)]) -> io::Result<InterfaceConfig> {
 
 fn parse_peer(kvs: &[(&str, &str)]) -> io::Result<PeerConfig> {
     let mut public_key = None;
+    let mut preshared_key = None;
     let mut endpoint = None;
     let mut allowed_ips = Vec::new();
     let mut persistent_keepalive = None;
@@ -183,6 +185,7 @@ fn parse_peer(kvs: &[(&str, &str)]) -> io::Result<PeerConfig> {
     for &(key, value) in kvs {
         match key.to_ascii_lowercase().as_str() {
             "publickey" => public_key = Some(decode_key(value)?),
+            "presharedkey" => preshared_key = Some(decode_key(value)?),
             "endpoint" => {
                 endpoint = Some(value.parse::<SocketAddr>().map_err(|e| {
                     io::Error::new(io::ErrorKind::InvalidData, format!("bad endpoint: {e}"))
@@ -208,6 +211,7 @@ fn parse_peer(kvs: &[(&str, &str)]) -> io::Result<PeerConfig> {
     Ok(PeerConfig {
         public_key: public_key
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing PublicKey"))?,
+        preshared_key,
         endpoint,
         allowed_ips,
         persistent_keepalive,

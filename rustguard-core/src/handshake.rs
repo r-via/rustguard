@@ -72,6 +72,7 @@ pub struct InitiatorHandshake {
     ephemeral: EphemeralSecret,
     sender_index: u32,
     their_public: PublicKey,
+    psk: [u8; 32],
 }
 
 /// Create a handshake initiation message.
@@ -87,6 +88,16 @@ pub fn create_initiation(
     our_static: &StaticSecret,
     their_public: &PublicKey,
     sender_index: u32,
+) -> (Initiation, InitiatorHandshake) {
+    create_initiation_psk(our_static, their_public, sender_index, &[0u8; 32])
+}
+
+/// Create a handshake initiation with an optional pre-shared key.
+pub fn create_initiation_psk(
+    our_static: &StaticSecret,
+    their_public: &PublicKey,
+    sender_index: u32,
+    psk: &[u8; 32],
 ) -> (Initiation, InitiatorHandshake) {
     let mut ck = initial_chain_key();
     let mut h = initial_hash(&ck);
@@ -141,6 +152,7 @@ pub fn create_initiation(
         ephemeral,
         sender_index,
         their_public: their_public.clone(),
+        psk: *psk,
     };
 
     (msg, state)
@@ -157,6 +169,7 @@ pub fn process_response(
         mut h,
         ephemeral,
         sender_index,
+        psk,
         ..
     } = state;
 
@@ -179,8 +192,6 @@ pub fn process_response(
     (ck, _) = mix_key(&ck, &dh2);
 
     // PSK phase (Noise_IKpsk2): mix PSK into chain.
-    // For now, PSK = all zeros (no pre-shared key).
-    let psk = [0u8; 32];
     let (new_ck, t, key) = crypto::hkdf(&ck, &psk);
     ck = new_ck;
     h = mix_hash(&h, &t);
@@ -188,7 +199,7 @@ pub fn process_response(
     // Decrypt empty payload.
     let result = decrypt_and_hash(&key, &h, &msg.encrypted_empty);
     let (h, _empty) = result?;
-    let _ = h; // final hash — could be used for channel binding
+    let _ = h;
 
     // Derive transport keys: initiator sends with first, receives with second.
     let (send_key, recv_key, _) = crypto::hkdf(&ck, &[]);
@@ -211,6 +222,16 @@ pub fn process_initiation(
     our_static: &StaticSecret,
     msg: &Initiation,
     responder_index: u32,
+) -> Option<(PublicKey, Response, TransportSession)> {
+    process_initiation_psk(our_static, msg, responder_index, &[0u8; 32])
+}
+
+/// Process a handshake initiation with an optional pre-shared key.
+pub fn process_initiation_psk(
+    our_static: &StaticSecret,
+    msg: &Initiation,
+    responder_index: u32,
+    psk: &[u8; 32],
 ) -> Option<(PublicKey, Response, TransportSession)> {
     let our_public = our_static.public_key();
     let mut ck = initial_chain_key();
@@ -275,8 +296,7 @@ pub fn process_initiation(
     (ck, _) = mix_key(&ck, &dh4);
 
     // PSK phase.
-    let psk = [0u8; 32];
-    let (new_ck, t, key3) = crypto::hkdf(&ck, &psk);
+    let (new_ck, t, key3) = crypto::hkdf(&ck, psk);
     ck = new_ck;
     h = mix_hash(&h, &t);
 

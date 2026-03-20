@@ -2,7 +2,7 @@
 
 pub const MSG_INITIATION: u32 = 1;
 pub const MSG_RESPONSE: u32 = 2;
-pub const MSG_COOKIE: u32 = 3;
+pub const MSG_COOKIE_REPLY: u32 = 3;
 pub const MSG_TRANSPORT: u32 = 4;
 
 /// Handshake Initiation (type 1) — 148 bytes total.
@@ -65,6 +65,23 @@ pub struct Transport {
     pub payload: Vec<u8>,
 }
 
+/// Cookie Reply (type 3) — 64 bytes total.
+///
+/// ```text
+/// type              (4)  = 0x03000000 LE
+/// receiver          (4)  initiator's sender_index
+/// nonce             (24) random XChaCha20 nonce
+/// encrypted_cookie  (32) XChaCha20-Poly1305(cookie) — 16 + 16 tag
+/// ```
+#[derive(Clone)]
+pub struct CookieReply {
+    pub receiver_index: u32,
+    pub nonce: [u8; 24],
+    pub encrypted_cookie: [u8; 32],
+}
+
+pub const COOKIE_REPLY_SIZE: usize = 64;
+
 pub const TRANSPORT_HEADER_SIZE: usize = 16;
 
 impl Initiation {
@@ -113,6 +130,25 @@ impl Response {
             encrypted_empty: buf[44..60].try_into().unwrap(),
             mac1: buf[60..76].try_into().unwrap(),
             mac2: buf[76..92].try_into().unwrap(),
+        }
+    }
+}
+
+impl CookieReply {
+    pub fn to_bytes(&self) -> [u8; COOKIE_REPLY_SIZE] {
+        let mut buf = [0u8; COOKIE_REPLY_SIZE];
+        buf[0..4].copy_from_slice(&MSG_COOKIE_REPLY.to_le_bytes());
+        buf[4..8].copy_from_slice(&self.receiver_index.to_le_bytes());
+        buf[8..32].copy_from_slice(&self.nonce);
+        buf[32..64].copy_from_slice(&self.encrypted_cookie);
+        buf
+    }
+
+    pub fn from_bytes(buf: &[u8; COOKIE_REPLY_SIZE]) -> Self {
+        Self {
+            receiver_index: u32::from_le_bytes(buf[4..8].try_into().unwrap()),
+            nonce: buf[8..32].try_into().unwrap(),
+            encrypted_cookie: buf[32..64].try_into().unwrap(),
         }
     }
 }

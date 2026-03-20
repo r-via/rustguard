@@ -1,3 +1,4 @@
+pub mod cookie;
 pub mod handshake;
 pub mod messages;
 pub mod replay;

@@ -4,7 +4,7 @@ mod blake2s;
 mod tai64n;
 
 pub use self::x25519::{StaticSecret, PublicKey, SharedSecret, EphemeralSecret};
-pub use self::aead::{seal, open, AEAD_TAG_LEN};
+pub use self::aead::{seal, open, xseal, xopen, AEAD_TAG_LEN};
 pub use self::blake2s::{hash, mac, hkdf};
 pub use self::tai64n::Tai64n;
 

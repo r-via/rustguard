@@ -1,6 +1,6 @@
 use chacha20poly1305::{
     aead::{Aead, KeyInit, Payload},
-    ChaCha20Poly1305, Nonce,
+    ChaCha20Poly1305, Nonce, XChaCha20Poly1305, XNonce,
 };
 
 pub const AEAD_TAG_LEN: usize = 16;
@@ -37,6 +37,24 @@ pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Opti
                 aad,
             },
         )
+        .ok()
+}
+
+/// Encrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie encryption.
+pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .encrypt(xnonce, Payload { msg: plaintext, aad })
+        .expect("xchacha encryption failed")
+}
+
+/// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .decrypt(xnonce, Payload { msg: ciphertext, aad })
         .ok()
 }
 

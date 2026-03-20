@@ -15,6 +15,7 @@ use crate::config::{CidrAddr, PeerConfig};
 /// Runtime state for a WireGuard peer.
 pub struct Peer {
     pub public_key: PublicKey,
+    pub psk: [u8; 32],
     pub endpoint: Option<SocketAddr>,
     pub allowed_ips: Vec<CidrAddr>,
     pub persistent_keepalive: Option<Duration>,
@@ -28,6 +29,7 @@ impl Peer {
     pub fn from_config(config: &PeerConfig) -> Self {
         Self {
             public_key: PublicKey::from_bytes(config.public_key),
+            psk: config.preshared_key.unwrap_or([0u8; 32]),
             endpoint: config.endpoint,
             allowed_ips: config.allowed_ips.clone(),
             persistent_keepalive: config
