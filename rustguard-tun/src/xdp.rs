@@ -446,7 +446,7 @@ unsafe fn make_ring(base: *mut u8, off: &XdpRingOffset, mask: u32) -> Ring {
     }
 }
 
-fn if_nametoindex(name: &str) -> io::Result<u32> {
+pub fn if_nametoindex(name: &str) -> io::Result<u32> {
     let cname = std::ffi::CString::new(name).map_err(|_| {
         io::Error::new(io::ErrorKind::InvalidInput, "invalid interface name")
     })?;
