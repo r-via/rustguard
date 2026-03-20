@@ -3,7 +3,7 @@
 //! Each peer has a public key, optional endpoint, allowed IPs,
 //! and an active transport session (after handshake).
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use rustguard_core::session::TransportSession;
@@ -41,7 +41,7 @@ impl Peer {
     }
 
     /// Check if this peer is allowed to send/receive packets for the given IP.
-    pub fn allows_ip(&self, ip: std::net::Ipv4Addr) -> bool {
+    pub fn allows_ip(&self, ip: IpAddr) -> bool {
         self.allowed_ips.iter().any(|cidr| cidr.contains(ip))
     }
 

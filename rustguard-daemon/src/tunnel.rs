@@ -8,7 +8,7 @@
 //! Plus signal handling for clean shutdown with route cleanup.
 
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -38,6 +38,7 @@ struct TunnelState {
 struct RouteEntry {
     route: String,
     interface: String,
+    is_v6: bool,
 }
 
 /// Start the tunnel. Blocks until SIGINT/SIGTERM or fatal error.
@@ -45,11 +46,15 @@ pub fn run(config: Config) -> io::Result<()> {
     let our_static = StaticSecret::from_bytes(config.interface.private_key);
 
     // Create TUN device.
+    // For point-to-point, find first v4 allowed IP as destination.
     let dest = config
         .peers
-        .first()
-        .and_then(|p| p.allowed_ips.first())
-        .map(|c| c.addr)
+        .iter()
+        .flat_map(|p| &p.allowed_ips)
+        .find_map(|c| match c.addr {
+            IpAddr::V4(v4) => Some(v4),
+            _ => None,
+        })
         .unwrap_or(Ipv4Addr::new(10, 0, 0, 2));
 
     let tun = Arc::new(Tun::create(&TunConfig {
@@ -61,6 +66,23 @@ pub fn run(config: Config) -> io::Result<()> {
     })?);
 
     println!("interface: {}", tun.name());
+
+    // Assign IPv6 address if configured.
+    if let Some((v6_addr, prefix_len)) = config.interface.address_v6 {
+        let addr_str = format!("{}/{}", v6_addr, prefix_len);
+        let result = assign_v6_address(tun.name(), &addr_str);
+        match result {
+            Ok(out) if out.status.success() => {
+                println!("ipv6 address: {addr_str}");
+            }
+            Ok(out) => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                eprintln!("ipv6 address assignment failed: {stderr}");
+            }
+            Err(e) => eprintln!("ipv6 address command failed: {e}"),
+        }
+    }
+
     println!("listening on 0.0.0.0:{}", config.interface.listen_port);
 
     // Bind UDP socket. Set read timeout so the inbound thread can check shutdown.
@@ -83,7 +105,7 @@ pub fn run(config: Config) -> io::Result<()> {
             peer.endpoint,
             peer.allowed_ips
                 .iter()
-                .map(|c| format!("{}/{}", c.addr, c.prefix_len))
+                .map(|c| c.to_string())
                 .collect::<Vec<_>>(),
         );
     }
@@ -93,18 +115,16 @@ pub fn run(config: Config) -> io::Result<()> {
     let mut routes_added: Vec<RouteEntry> = Vec::new();
     for peer_config in &config.peers {
         for cidr in &peer_config.allowed_ips {
-            let route = if cidr.prefix_len == 32 {
-                format!("{}/32", cidr.addr)
-            } else {
-                format!("{}/{}", cidr.addr, cidr.prefix_len)
-            };
-            let result = add_route(&route, &tun_name);
+            let route = format!("{}", cidr);
+            let is_v6 = cidr.addr.is_ipv6();
+            let result = add_route(&route, &tun_name, is_v6);
             match result {
                 Ok(out) if out.status.success() => {
                     println!("route add {route} -> {tun_name}");
                     routes_added.push(RouteEntry {
                         route,
                         interface: tun_name.clone(),
+                        is_v6,
                     });
                 }
                 Ok(out) => {
@@ -176,11 +196,22 @@ pub fn run(config: Config) -> io::Result<()> {
                 }
             };
 
-            if n < 20 {
+            if n < 1 {
                 continue;
             }
 
-            let dst_ip = Ipv4Addr::new(buf[16], buf[17], buf[18], buf[19]);
+            // Extract destination IP from IP header.
+            let dst_ip: IpAddr = match buf[0] >> 4 {
+                4 if n >= 20 => {
+                    IpAddr::V4(Ipv4Addr::new(buf[16], buf[17], buf[18], buf[19]))
+                }
+                6 if n >= 40 => {
+                    let mut addr = [0u8; 16];
+                    addr.copy_from_slice(&buf[24..40]);
+                    IpAddr::V6(Ipv6Addr::from(addr))
+                }
+                _ => continue, // Unknown or too short.
+            };
             let mut st = state_out.lock().unwrap();
 
             let peer_idx = st.peers.iter().position(|p| p.allows_ip(dst_ip));
@@ -434,7 +465,7 @@ pub fn run(config: Config) -> io::Result<()> {
     // Clean up routes.
     println!("cleaning up routes...");
     for entry in &routes_added {
-        let _ = delete_route(&entry.route, &entry.interface);
+        let _ = delete_route(&entry.route, &entry.interface, entry.is_v6);
         println!("route delete {}", entry.route);
     }
 
@@ -490,31 +521,50 @@ fn base64_key(key: &[u8; 32]) -> String {
     BASE64_STANDARD.encode(key)
 }
 
+/// Assign an IPv6 address to a TUN interface.
+#[cfg(target_os = "macos")]
+fn assign_v6_address(ifname: &str, addr: &str) -> io::Result<std::process::Output> {
+    Command::new("ifconfig")
+        .args([ifname, "inet6", addr])
+        .output()
+}
+
+#[cfg(target_os = "linux")]
+fn assign_v6_address(ifname: &str, addr: &str) -> io::Result<std::process::Output> {
+    Command::new("ip")
+        .args(["-6", "addr", "add", addr, "dev", ifname])
+        .output()
+}
+
 /// Platform-specific route management.
 #[cfg(target_os = "macos")]
-fn add_route(route: &str, interface: &str) -> io::Result<std::process::Output> {
+fn add_route(route: &str, interface: &str, is_v6: bool) -> io::Result<std::process::Output> {
+    let family = if is_v6 { "-inet6" } else { "-net" };
     Command::new("route")
-        .args(["-n", "add", "-net", route, "-interface", interface])
+        .args(["-n", "add", family, route, "-interface", interface])
         .output()
 }
 
 #[cfg(target_os = "macos")]
-fn delete_route(route: &str, interface: &str) -> io::Result<std::process::Output> {
+fn delete_route(route: &str, interface: &str, is_v6: bool) -> io::Result<std::process::Output> {
+    let family = if is_v6 { "-inet6" } else { "-net" };
     Command::new("route")
-        .args(["-n", "delete", "-net", route, "-interface", interface])
+        .args(["-n", "delete", family, route, "-interface", interface])
         .output()
 }
 
 #[cfg(target_os = "linux")]
-fn add_route(route: &str, interface: &str) -> io::Result<std::process::Output> {
+fn add_route(route: &str, interface: &str, is_v6: bool) -> io::Result<std::process::Output> {
+    let subcmd = if is_v6 { "-6" } else { "-4" };
     Command::new("ip")
-        .args(["route", "add", route, "dev", interface])
+        .args([subcmd, "route", "add", route, "dev", interface])
         .output()
 }
 
 #[cfg(target_os = "linux")]
-fn delete_route(route: &str, interface: &str) -> io::Result<std::process::Output> {
+fn delete_route(route: &str, interface: &str, is_v6: bool) -> io::Result<std::process::Output> {
+    let subcmd = if is_v6 { "-6" } else { "-4" };
     Command::new("ip")
-        .args(["route", "del", route, "dev", interface])
+        .args([subcmd, "route", "del", route, "dev", interface])
         .output()
 }

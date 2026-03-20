@@ -4,7 +4,7 @@
 //! implementation understands. Muscle memory compatible.
 
 use base64::prelude::*;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::Path;
 use std::{fs, io};
 
@@ -21,6 +21,7 @@ pub struct InterfaceConfig {
     pub listen_port: u16,
     pub address: Ipv4Addr,
     pub netmask: Ipv4Addr,
+    pub address_v6: Option<(Ipv6Addr, u8)>,
 }
 
 #[derive(Debug)]
@@ -32,27 +33,66 @@ pub struct PeerConfig {
     pub persistent_keepalive: Option<u16>,
 }
 
-/// An IP address with prefix length (CIDR notation).
+/// An IP address with prefix length (CIDR notation). Supports v4 and v6.
 #[derive(Debug, Clone)]
 pub struct CidrAddr {
-    pub addr: Ipv4Addr,
+    pub addr: IpAddr,
     pub prefix_len: u8,
 }
 
 impl CidrAddr {
     /// Check if a given IP falls within this CIDR range.
-    pub fn contains(&self, ip: Ipv4Addr) -> bool {
-        if self.prefix_len == 0 {
-            return true;
+    pub fn contains_v4(&self, ip: Ipv4Addr) -> bool {
+        match self.addr {
+            IpAddr::V4(net) => {
+                if self.prefix_len == 0 {
+                    return true;
+                }
+                let mask = if self.prefix_len >= 32 {
+                    u32::MAX
+                } else {
+                    u32::MAX << (32 - self.prefix_len)
+                };
+                let net: u32 = net.into();
+                let target: u32 = ip.into();
+                (net & mask) == (target & mask)
+            }
+            IpAddr::V6(_) => false,
         }
-        let mask = if self.prefix_len >= 32 {
-            u32::MAX
-        } else {
-            u32::MAX << (32 - self.prefix_len)
-        };
-        let net: u32 = self.addr.into();
-        let target: u32 = ip.into();
-        (net & mask) == (target & mask)
+    }
+
+    /// Check if a given IPv6 address falls within this CIDR range.
+    pub fn contains_v6(&self, ip: Ipv6Addr) -> bool {
+        match self.addr {
+            IpAddr::V4(_) => false,
+            IpAddr::V6(net) => {
+                if self.prefix_len == 0 {
+                    return true;
+                }
+                let net = u128::from(net);
+                let target = u128::from(ip);
+                let mask = if self.prefix_len >= 128 {
+                    u128::MAX
+                } else {
+                    u128::MAX << (128 - self.prefix_len)
+                };
+                (net & mask) == (target & mask)
+            }
+        }
+    }
+
+    /// Check if a given IP (v4 or v6) falls within this CIDR range.
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(v4) => self.contains_v4(v4),
+            IpAddr::V6(v6) => self.contains_v6(v6),
+        }
+    }
+}
+
+impl std::fmt::Display for CidrAddr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.addr, self.prefix_len)
     }
 }
 
@@ -138,6 +178,7 @@ fn parse_interface(kvs: &[(&str, &str)]) -> io::Result<InterfaceConfig> {
     let mut listen_port = 51820u16;
     let mut address = None;
     let mut netmask = Ipv4Addr::new(255, 255, 255, 0);
+    let mut address_v6 = None;
 
     for &(key, value) in kvs {
         match key.to_ascii_lowercase().as_str() {
@@ -148,19 +189,27 @@ fn parse_interface(kvs: &[(&str, &str)]) -> io::Result<InterfaceConfig> {
                 })?
             }
             "address" => {
-                // Parse "10.0.0.1/24" format.
-                let (addr_str, prefix) = value
-                    .split_once('/')
-                    .unwrap_or((value, "24"));
-                address = Some(addr_str.parse::<Ipv4Addr>().map_err(|e| {
-                    io::Error::new(io::ErrorKind::InvalidData, format!("bad address: {e}"))
-                })?);
-                let prefix_len: u8 = prefix.parse().map_err(|e| {
-                    io::Error::new(io::ErrorKind::InvalidData, format!("bad prefix: {e}"))
-                })?;
-                netmask = prefix_to_netmask(prefix_len);
+                // Support comma-separated v4 and v6: "10.0.0.1/24, fd15::1/64"
+                for part in value.split(',') {
+                    let part = part.trim();
+                    let (addr_str, prefix) = part.split_once('/').unwrap_or((part, "24"));
+                    let prefix_len: u8 = prefix.parse().map_err(|e| {
+                        io::Error::new(io::ErrorKind::InvalidData, format!("bad prefix: {e}"))
+                    })?;
+
+                    if let Ok(v4) = addr_str.parse::<Ipv4Addr>() {
+                        address = Some(v4);
+                        netmask = prefix_to_netmask(prefix_len);
+                    } else if let Ok(v6) = addr_str.parse::<Ipv6Addr>() {
+                        address_v6 = Some((v6, prefix_len));
+                    } else {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!("bad address: {addr_str}"),
+                        ));
+                    }
+                }
             }
-            // Silently skip PostUp/PostDown/DNS/Table/etc for now.
             _ => {}
         }
     }
@@ -172,6 +221,7 @@ fn parse_interface(kvs: &[(&str, &str)]) -> io::Result<InterfaceConfig> {
         address: address
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing Address"))?,
         netmask,
+        address_v6,
     })
 }
 
@@ -219,11 +269,13 @@ fn parse_peer(kvs: &[(&str, &str)]) -> io::Result<PeerConfig> {
 }
 
 fn parse_cidr(s: &str) -> io::Result<CidrAddr> {
-    let (addr_str, prefix_str) = s.split_once('/').unwrap_or((s, "32"));
-    let addr = addr_str.parse::<Ipv4Addr>().map_err(|e| {
+    // Default prefix: 32 for v4, 128 for v6.
+    let (addr_str, prefix_str_opt) = s.split_once('/').map(|(a, p)| (a, Some(p))).unwrap_or((s, None));
+    let addr = addr_str.parse::<IpAddr>().map_err(|e| {
         io::Error::new(io::ErrorKind::InvalidData, format!("bad CIDR addr: {e}"))
     })?;
-    let prefix_len = prefix_str.parse::<u8>().map_err(|e| {
+    let default_prefix = if addr.is_ipv4() { "32" } else { "128" };
+    let prefix_len = prefix_str_opt.unwrap_or(default_prefix).parse::<u8>().map_err(|e| {
         io::Error::new(io::ErrorKind::InvalidData, format!("bad CIDR prefix: {e}"))
     })?;
     Ok(CidrAddr { addr, prefix_len })
@@ -282,33 +334,72 @@ AllowedIPs = 10.0.0.3/32
     }
 
     #[test]
-    fn cidr_contains() {
+    fn cidr_contains_v4() {
         let cidr = CidrAddr {
-            addr: Ipv4Addr::new(10, 0, 0, 0),
+            addr: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 0)),
             prefix_len: 24,
         };
-        assert!(cidr.contains(Ipv4Addr::new(10, 0, 0, 1)));
-        assert!(cidr.contains(Ipv4Addr::new(10, 0, 0, 254)));
-        assert!(!cidr.contains(Ipv4Addr::new(10, 0, 1, 1)));
+        assert!(cidr.contains_v4(Ipv4Addr::new(10, 0, 0, 1)));
+        assert!(cidr.contains_v4(Ipv4Addr::new(10, 0, 0, 254)));
+        assert!(!cidr.contains_v4(Ipv4Addr::new(10, 0, 1, 1)));
     }
 
     #[test]
     fn cidr_contains_host() {
         let cidr = CidrAddr {
-            addr: Ipv4Addr::new(10, 0, 0, 2),
+            addr: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
             prefix_len: 32,
         };
-        assert!(cidr.contains(Ipv4Addr::new(10, 0, 0, 2)));
-        assert!(!cidr.contains(Ipv4Addr::new(10, 0, 0, 3)));
+        assert!(cidr.contains_v4(Ipv4Addr::new(10, 0, 0, 2)));
+        assert!(!cidr.contains_v4(Ipv4Addr::new(10, 0, 0, 3)));
     }
 
     #[test]
     fn cidr_contains_default_route() {
         let cidr = CidrAddr {
-            addr: Ipv4Addr::new(0, 0, 0, 0),
+            addr: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
             prefix_len: 0,
         };
-        assert!(cidr.contains(Ipv4Addr::new(1, 2, 3, 4)));
-        assert!(cidr.contains(Ipv4Addr::new(10, 0, 0, 1)));
+        assert!(cidr.contains_v4(Ipv4Addr::new(1, 2, 3, 4)));
+        assert!(cidr.contains_v4(Ipv4Addr::new(10, 0, 0, 1)));
+    }
+
+    #[test]
+    fn cidr_contains_v6() {
+        let cidr = CidrAddr {
+            addr: IpAddr::V6("fd00::".parse().unwrap()),
+            prefix_len: 64,
+        };
+        assert!(cidr.contains_v6("fd00::1".parse().unwrap()));
+        assert!(cidr.contains_v6("fd00::ffff".parse().unwrap()));
+        assert!(!cidr.contains_v6("fd01::1".parse().unwrap()));
+    }
+
+    #[test]
+    fn cidr_v4_does_not_match_v6() {
+        let cidr = CidrAddr {
+            addr: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 0)),
+            prefix_len: 8,
+        };
+        assert!(!cidr.contains_v6("fd00::1".parse().unwrap()));
+    }
+
+    #[test]
+    fn parse_v6_allowed_ips() {
+        let config = Config::parse(
+            r#"
+[Interface]
+PrivateKey = cGiPH7CqyNOCaW6ykZLH9K3Bt0enk5rDiTcv1O3A+JA=
+ListenPort = 51820
+Address = 10.0.0.1/24
+
+[Peer]
+PublicKey = HhMN8JntZEa8iF6bc+BdJD8MGD9shwefov5Gt+95Ky8=
+AllowedIPs = 10.0.0.2/32, fd00::/64
+"#,
+        )
+        .unwrap();
+        assert_eq!(config.peers[0].allowed_ips.len(), 2);
+        assert!(config.peers[0].allowed_ips[1].addr.is_ipv6());
     }
 }
