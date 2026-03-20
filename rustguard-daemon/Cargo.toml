@@ -1,0 +1,12 @@
+[package]
+name = "rustguard-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "RustGuard daemon: interface management, packet routing, config"
+
+[dependencies]
+rustguard-core = { path = "../rustguard-core" }
+rustguard-crypto = { path = "../rustguard-crypto" }
+rustguard-tun = { path = "../rustguard-tun" }
+base64 = "0.22"

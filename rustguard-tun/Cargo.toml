@@ -1,0 +1,9 @@
+[package]
+name = "rustguard-tun"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cross-platform TUN device abstraction for RustGuard"
+
+[dependencies]
+libc = "0.2"
