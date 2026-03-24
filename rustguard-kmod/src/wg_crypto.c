@@ -18,8 +18,6 @@
 #include <linux/scatterlist.h>
 #include <linux/random.h>
 #include <crypto/blake2s.h>
-#include <crypto/curve25519.h>
-
 /* Prototypes for exported functions. */
 int wg_chacha20poly1305_encrypt(
 	const u8 key[32], u64 nonce, const u8 *src, u32 src_len,
@@ -33,9 +31,6 @@ void wg_blake2s_256_mac(const u8 *key, u32 key_len,
 	const u8 *data, u32 data_len, u8 out[32]);
 void wg_hkdf(const u8 key[32], const u8 *input, u32 input_len,
 	u8 out1[32], u8 out2[32], u8 out3[32]);
-int wg_curve25519(u8 out[32], const u8 scalar[32], const u8 point[32]);
-void wg_curve25519_generate_secret(u8 secret[32]);
-void wg_curve25519_generate_public(u8 pub_key[32], const u8 secret[32]);
 void wg_get_random_bytes(u8 *buf, u32 len);
 
 /*
@@ -255,8 +250,11 @@ EXPORT_SYMBOL_GPL(wg_hkdf);
 
 /*
  * ── Curve25519 ────────────────────────────────────────────────────────
+ * Disabled for now — requires CONFIG_CRYPTO_CURVE25519 which isn't in
+ * defconfig. Only needed for handshake, not transport. Will enable when
+ * we add the Noise_IK handshake to the kernel module.
  */
-
+#if 0
 int wg_curve25519(u8 out[32], const u8 scalar[32], const u8 point[32])
 {
 	return curve25519(out, scalar, point) ? 0 : -EINVAL;
@@ -275,6 +273,7 @@ void wg_curve25519_generate_public(u8 pub_key[32], const u8 secret[32])
 		memset(pub_key, 0, 32);
 }
 EXPORT_SYMBOL_GPL(wg_curve25519_generate_public);
+#endif
 
 /*
  * ── Random ────────────────────────────────────────────────────────────
