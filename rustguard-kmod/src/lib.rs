@@ -6,6 +6,7 @@
 //! Rust handles: WireGuard protocol logic, peer state, packet routing.
 
 use kernel::prelude::*;
+use kernel::alloc::KBox;
 use core::sync::atomic::{AtomicPtr, Ordering};
 
 module! {
@@ -94,21 +95,9 @@ impl kernel::Module for RustGuard {
             peer: None,
         };
 
-        // SAFETY: we're converting a Box-like allocation to a raw pointer.
-        // We manually manage its lifetime (freed in Drop).
-        let state_raw = {
-            // Use kernel's allocator via a raw allocation.
-            let layout = core::alloc::Layout::new::<DeviceState>();
-            // SAFETY: layout is non-zero size.
-            let ptr = unsafe { kernel::alloc::allocator::krealloc_aligned(core::ptr::null_mut(), layout, kernel::alloc::Flags::from_raw(0x0cc0)) }; // GFP_KERNEL
-            if ptr.is_null() {
-                return Err(ENOMEM);
-            }
-            let typed = ptr as *mut DeviceState;
-            // SAFETY: ptr is valid, aligned, and we have exclusive access.
-            unsafe { typed.write(state) };
-            typed
-        };
+        // Allocate state on the kernel heap.
+        let state_box = KBox::new(state, GFP_KERNEL)?;
+        let state_raw = KBox::into_raw(state_box);
 
         DEVICE_STATE_PTR.store(state_raw, Ordering::Release);
         let state_void = state_raw as VoidPtr;
@@ -160,14 +149,8 @@ impl Drop for RustGuard {
 }
 
 unsafe fn cleanup_state(ptr: *mut DeviceState) {
-    unsafe {
-        core::ptr::drop_in_place(ptr);
-        kernel::alloc::allocator::krealloc_aligned(
-            ptr as *mut u8,
-            core::alloc::Layout::new::<()>(), // size 0 = free
-            kernel::alloc::Flags::from_raw(0),
-        );
-    }
+    // SAFETY: ptr was obtained from KBox::into_raw in init.
+    unsafe { drop(KBox::from_raw(ptr)) };
     DEVICE_STATE_PTR.store(core::ptr::null_mut(), Ordering::Release);
 }
 
