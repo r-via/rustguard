@@ -133,8 +133,18 @@ impl kernel::Module for RustGuard {
             wg_curve25519_generate_public(static_public.as_mut_ptr(), static_secret.as_ptr());
         }
 
-        pr_info!("rustguard: our public key: {:02x}{:02x}{:02x}{:02x}...\n",
-            static_public[0], static_public[1], static_public[2], static_public[3]);
+        // Print full public key as hex for peer configuration.
+        // In production this comes from genetlink (wg show).
+        let mut hex_buf = [0u8; 64];
+        for (i, b) in static_public.iter().enumerate() {
+            let hi = b >> 4;
+            let lo = b & 0xf;
+            hex_buf[i * 2] = if hi < 10 { b'0' + hi } else { b'a' + hi - 10 };
+            hex_buf[i * 2 + 1] = if lo < 10 { b'0' + lo } else { b'a' + lo - 10 };
+        }
+        // SAFETY: hex_buf is valid ASCII.
+        let hex_str = unsafe { core::str::from_utf8_unchecked(&hex_buf) };
+        pr_info!("rustguard: pubkey={}\n", hex_str);
 
         let state = DeviceState {
             net_dev: core::ptr::null_mut(),
