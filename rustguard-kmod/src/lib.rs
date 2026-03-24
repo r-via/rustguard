@@ -274,7 +274,7 @@ unsafe fn do_xmit(skb: VoidPtr, priv_: VoidPtr) -> i32 {
             peer.endpoint_port,
         );
 
-        if counter < 3 {
+        if counter < 10 {
             pr_info!("rustguard: TX pkt #{} len={} enc_len={} send={}\n",
                 counter, data_len, total_len, send_ret);
         }
@@ -348,14 +348,14 @@ unsafe fn do_rx(skb: VoidPtr, priv_: VoidPtr) -> i32 {
         wg_kfree_skb(skb);
 
         if ret != 0 {
-            if counter < 3 {
+            if counter < 10 {
                 pr_info!("rustguard: RX decrypt failed: {} counter={} enc_len={}\n",
                     ret, counter, encrypted_len);
             }
             return 0;
         }
 
-        if counter < 3 {
+        if counter < 10 {
             pr_info!("rustguard: RX pkt #{} dec_len={}\n", counter, encrypted_len - AEAD_TAG_SIZE);
         }
 
