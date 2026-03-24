@@ -42,9 +42,16 @@ impl kernel::Module for RustGuard {
         // TODO: allocate per-device state (peer table, keys, etc.)
         let dev = unsafe { wg_create_device(core::ptr::null_mut()) };
 
-        // wg_create_device returns ERR_PTR on failure (negative value).
-        if dev.is_null() || (dev as isize) < 0 {
-            pr_err!("rustguard: failed to create net device\n");
+        // wg_create_device returns ERR_PTR on failure.
+        // ERR_PTR values are in the range [-(2^12), -1] when cast to isize.
+        // On x86_64 this means the pointer looks like 0xffffffff_fffff000+.
+        if dev.is_null() {
+            pr_err!("rustguard: failed to create net device (null)\n");
+            return Err(ENOMEM);
+        }
+        let dev_isize = dev as isize;
+        if dev_isize >= -4095 && dev_isize < 0 {
+            pr_err!("rustguard: failed to create net device (err={})\n", dev_isize);
             return Err(ENOMEM);
         }
 
