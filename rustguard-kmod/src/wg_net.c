@@ -19,6 +19,42 @@
 #define WG_MTU 1420
 #define WG_NETDEV_NAME "wg%d"
 
+/*
+ * Module parameters for test configuration.
+ * In production these come from genetlink (wg tool), but for testing
+ * we hardcode a single peer via insmod params.
+ *
+ * Usage:
+ *   insmod rustguard.ko peer_ip=0xC0A86302 peer_port=51820 role=0
+ *   (peer_ip in hex host-order: 192.168.99.2 = 0xC0A86302)
+ */
+static unsigned int peer_ip = 0;
+module_param(peer_ip, uint, 0644);
+MODULE_PARM_DESC(peer_ip, "Peer endpoint IPv4 (host byte order, hex)");
+
+static unsigned int peer_port = 51820;
+module_param(peer_port, uint, 0644);
+MODULE_PARM_DESC(peer_port, "Peer endpoint UDP port");
+
+static unsigned int role = 0;
+module_param(role, uint, 0644);
+MODULE_PARM_DESC(role, "0=initiator (send=key_a,recv=key_b), 1=responder (reversed)");
+
+/* Exported to Rust. */
+unsigned int wg_param_peer_ip(void) { return peer_ip; }
+EXPORT_SYMBOL_GPL(wg_param_peer_ip);
+
+unsigned int wg_param_peer_port(void) { return peer_port; }
+EXPORT_SYMBOL_GPL(wg_param_peer_port);
+
+unsigned int wg_param_role(void) { return role; }
+EXPORT_SYMBOL_GPL(wg_param_role);
+
+/* Prototypes. */
+unsigned int wg_param_peer_ip(void);
+unsigned int wg_param_peer_port(void);
+unsigned int wg_param_role(void);
+
 /* Prototypes for functions exported to Rust. */
 struct net_device *wg_create_device(void *rust_priv);
 void wg_destroy_device(struct net_device *dev);

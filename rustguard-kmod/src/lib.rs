@@ -51,6 +51,11 @@ extern "C" {
     ) -> i32;
     fn wg_skb_len(skb: VoidPtr) -> u32;
     fn wg_skb_data_ptr(skb: VoidPtr) -> *mut u8;
+
+    // Module params (wg_net.c)
+    fn wg_param_peer_ip() -> u32;
+    fn wg_param_peer_port() -> u32;
+    fn wg_param_role() -> u32;
 }
 
 // ── WireGuard constants ───────────────────────────────────────────────
@@ -122,6 +127,41 @@ impl kernel::Module for RustGuard {
             return Err(ENOMEM);
         }
         unsafe { (*state_raw).udp_sock = sock };
+
+        // Configure test peer from module params.
+        let pip = unsafe { wg_param_peer_ip() };
+        let pport = unsafe { wg_param_peer_port() } as u16;
+        let role = unsafe { wg_param_role() };
+
+        if pip != 0 {
+            // Hardcoded test keys — same on both sides, direction swapped by role.
+            let key_a: [u8; 32] = [
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+                0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+                0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
+            ];
+            let key_b: [u8; 32] = [
+                0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28,
+                0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30,
+                0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
+                0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40,
+            ];
+
+            let (ks, kr) = if role == 0 { (key_a, key_b) } else { (key_b, key_a) };
+
+            let peer = Peer {
+                endpoint_ip: pip,
+                endpoint_port: pport,
+                key_send: ks,
+                key_recv: kr,
+                their_index: 42,
+                send_counter: 0,
+            };
+
+            unsafe { (*state_raw).peer = Some(peer) };
+            pr_info!("rustguard: peer configured at {:x}:{} role={}\n", pip, pport, role);
+        }
 
         pr_info!("rustguard: wg0 created, listening on UDP 51820\n");
         Ok(RustGuard)
