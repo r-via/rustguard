@@ -59,7 +59,6 @@ struct socket *wg_socket_create(u16 port, void *rust_priv)
 {
 	struct socket *sock = NULL;
 	struct sockaddr_in addr;
-	struct udp_tunnel_sock_cfg cfg = {};
 	int ret;
 
 	ret = sock_create_kern(&init_net, AF_INET, SOCK_DGRAM, IPPROTO_UDP, &sock);
