@@ -48,6 +48,13 @@ static int wg_udp_encap_recv(struct sock *sk, struct sk_buff *skb)
 	/* Strip the UDP header — we want the WireGuard payload. */
 	__skb_pull(skb, sizeof(struct udphdr));
 
+	/* Ensure the skb data is linear (not fragmented).
+	 * Large packets may have data in frags — we need it contiguous. */
+	if (skb_linearize(skb)) {
+		kfree_skb(skb);
+		return 0;
+	}
+
 	return rustguard_rx(skb, rust_priv);
 }
 
