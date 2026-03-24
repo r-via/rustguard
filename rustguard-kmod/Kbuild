@@ -1,2 +1,2 @@
 obj-m := rustguard.o
-rustguard-y := src/lib.o
+rustguard-y := src/wg_net.o src/lib.o
