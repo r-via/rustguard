@@ -40,10 +40,15 @@ static unsigned int role = 0;
 module_param(role, uint, 0644);
 MODULE_PARM_DESC(role, "0=initiator (send=key_a,recv=key_b), 1=responder (reversed)");
 
+static char peer_pubkey_hex[65] = "";
+module_param_string(peer_pubkey, peer_pubkey_hex, sizeof(peer_pubkey_hex), 0644);
+MODULE_PARM_DESC(peer_pubkey, "Peer public key as 64 hex chars");
+
 /* Prototypes. */
 unsigned int wg_param_peer_ip(void);
 unsigned int wg_param_peer_port(void);
 unsigned int wg_param_role(void);
+int wg_param_peer_pubkey(unsigned char out[32]);
 
 /* Exported to Rust. */
 unsigned int wg_param_peer_ip(void) { return peer_ip; }
@@ -54,6 +59,20 @@ EXPORT_SYMBOL_GPL(wg_param_peer_port);
 
 unsigned int wg_param_role(void) { return role; }
 EXPORT_SYMBOL_GPL(wg_param_role);
+
+/* Parse hex pubkey string to 32 bytes. Returns 0 on success. */
+int wg_param_peer_pubkey(unsigned char out[32])
+{
+	int i;
+	if (strlen(peer_pubkey_hex) != 64)
+		return -EINVAL;
+	for (i = 0; i < 32; i++) {
+		if (hex2bin(&out[i], &peer_pubkey_hex[i * 2], 1) < 0)
+			return -EINVAL;
+	}
+	return 0;
+}
+EXPORT_SYMBOL_GPL(wg_param_peer_pubkey);
 
 /* Prototypes for functions exported to Rust. */
 struct net_device *wg_create_device(void *rust_priv);

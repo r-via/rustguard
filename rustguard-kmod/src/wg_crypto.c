@@ -2,12 +2,8 @@
 /*
  * RustGuard — C shim for kernel crypto.
  *
- * Uses the same chacha20poly1305 library functions as the real kernel
- * WireGuard (lib/crypto/chacha20poly1305.c). No crypto API, no scatterlists,
- * no TFM allocation. Just buffers in, buffers out.
- *
- * Jason got this right — the kernel crypto API is for block devices and TLS.
- * WireGuard needs fast, simple, buffer-oriented crypto.
+ * Uses the kernel's library crypto functions (same as kernel WireGuard).
+ * Provides: ChaCha20-Poly1305, XChaCha20-Poly1305, BLAKE2s, HKDF, Curve25519.
  */
 
 #include <linux/module.h>
@@ -15,38 +11,44 @@
 #include <linux/random.h>
 #include <crypto/chacha20poly1305.h>
 #include <crypto/blake2s.h>
+#include <crypto/curve25519.h>
 
-/* Prototypes. */
+/* ── Prototypes ────────────────────────────────────────────────────── */
+
 int wg_chacha20poly1305_encrypt(
 	const u8 key[32], u64 nonce, const u8 *src, u32 src_len,
 	const u8 *ad, u32 ad_len, u8 *dst);
 int wg_chacha20poly1305_decrypt(
 	const u8 key[32], u64 nonce, const u8 *src, u32 src_len,
 	const u8 *ad, u32 ad_len, u8 *dst);
-int wg_crypto_init(void);
-void wg_crypto_exit(void);
-void wg_blake2s_256(const u8 *data, u32 data_len, u8 out[32]);
-void wg_blake2s_256_hmac(const u8 key[32], const u8 *data, u32 data_len, u8 out[32]);
+int wg_xchacha20poly1305_encrypt(
+	const u8 key[32], const u8 nonce[24], const u8 *src, u32 src_len,
+	const u8 *ad, u32 ad_len, u8 *dst);
+int wg_xchacha20poly1305_decrypt(
+	const u8 key[32], const u8 nonce[24], const u8 *src, u32 src_len,
+	const u8 *ad, u32 ad_len, u8 *dst);
+void wg_blake2s_hash(const u8 *const *chunks, const u32 *chunk_lens,
+	u32 num_chunks, u8 out[32]);
+void wg_blake2s_256_hmac(const u8 key[32], const u8 *data, u32 data_len,
+	u8 out[32]);
 void wg_blake2s_256_mac(const u8 *key, u32 key_len,
 	const u8 *data, u32 data_len, u8 out[32]);
 void wg_hkdf(const u8 key[32], const u8 *input, u32 input_len,
 	u8 out1[32], u8 out2[32], u8 out3[32]);
+int wg_curve25519(u8 out[32], const u8 scalar[32], const u8 point[32]);
+void wg_curve25519_generate_secret(u8 secret[32]);
+void wg_curve25519_generate_public(u8 pub_key[32], const u8 secret[32]);
 void wg_get_random_bytes(u8 *buf, u32 len);
+int wg_crypto_init(void);
+void wg_crypto_exit(void);
 
-/*
- * ── ChaCha20-Poly1305 ────────────────────────────────────────────────
- *
- * Direct library calls — same as kernel WireGuard uses.
- * dst must have room for src_len + 16 (tag) on encrypt.
- * src_len includes the 16-byte tag on decrypt.
- */
+/* ── ChaCha20-Poly1305 ────────────────────────────────────────────── */
 
 int wg_chacha20poly1305_encrypt(
 	const u8 key[32], u64 nonce, const u8 *src, u32 src_len,
 	const u8 *ad, u32 ad_len, u8 *dst)
 {
-	chacha20poly1305_encrypt(dst, src, src_len,
-				 ad, ad_len, nonce, key);
+	chacha20poly1305_encrypt(dst, src, src_len, ad, ad_len, nonce, key);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(wg_chacha20poly1305_encrypt);
@@ -57,29 +59,55 @@ int wg_chacha20poly1305_decrypt(
 {
 	if (src_len < CHACHA20POLY1305_AUTHTAG_SIZE)
 		return -EINVAL;
-	if (!chacha20poly1305_decrypt(dst, src, src_len,
-				      ad, ad_len, nonce, key))
+	if (!chacha20poly1305_decrypt(dst, src, src_len, ad, ad_len, nonce, key))
 		return -EBADMSG;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(wg_chacha20poly1305_decrypt);
 
-int wg_crypto_init(void) { return 0; }
-EXPORT_SYMBOL_GPL(wg_crypto_init);
+/* ── XChaCha20-Poly1305 (for cookie encryption) ───────────────────── */
 
-void wg_crypto_exit(void) {}
-EXPORT_SYMBOL_GPL(wg_crypto_exit);
+int wg_xchacha20poly1305_encrypt(
+	const u8 key[32], const u8 nonce[24], const u8 *src, u32 src_len,
+	const u8 *ad, u32 ad_len, u8 *dst)
+{
+	xchacha20poly1305_encrypt(dst, src, src_len, ad, ad_len, nonce, key);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(wg_xchacha20poly1305_encrypt);
+
+int wg_xchacha20poly1305_decrypt(
+	const u8 key[32], const u8 nonce[24], const u8 *src, u32 src_len,
+	const u8 *ad, u32 ad_len, u8 *dst)
+{
+	if (src_len < CHACHA20POLY1305_AUTHTAG_SIZE)
+		return -EINVAL;
+	if (!xchacha20poly1305_decrypt(dst, src, src_len, ad, ad_len, nonce, key))
+		return -EBADMSG;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(wg_xchacha20poly1305_decrypt);
+
+/* ── BLAKE2s ───────────────────────────────────────────────────────── */
 
 /*
- * ── BLAKE2s-256 ───────────────────────────────────────────────────────
+ * Multi-buffer BLAKE2s-256 hash: H(chunk[0] || chunk[1] || ... || chunk[n-1])
+ * Used throughout WireGuard for mix_hash, initial_hash, etc.
  */
-
-void wg_blake2s_256(const u8 *data, u32 data_len, u8 out[32])
+void wg_blake2s_hash(const u8 *const *chunks, const u32 *chunk_lens,
+	u32 num_chunks, u8 out[32])
 {
-	blake2s(out, data, NULL, BLAKE2S_HASH_SIZE, data_len, 0);
-}
-EXPORT_SYMBOL_GPL(wg_blake2s_256);
+	struct blake2s_state state;
+	u32 i;
 
+	blake2s_init(&state, BLAKE2S_HASH_SIZE);
+	for (i = 0; i < num_chunks; i++)
+		blake2s_update(&state, chunks[i], chunk_lens[i]);
+	blake2s_final(&state, out);
+}
+EXPORT_SYMBOL_GPL(wg_blake2s_hash);
+
+/* Keyed BLAKE2s MAC — for MAC1/MAC2. */
 void wg_blake2s_256_mac(const u8 *key, u32 key_len,
 	const u8 *data, u32 data_len, u8 out[32])
 {
@@ -87,7 +115,9 @@ void wg_blake2s_256_mac(const u8 *key, u32 key_len,
 }
 EXPORT_SYMBOL_GPL(wg_blake2s_256_mac);
 
-void wg_blake2s_256_hmac(const u8 key[32], const u8 *data, u32 data_len, u8 out[32])
+/* HMAC-BLAKE2s — for HKDF. */
+void wg_blake2s_256_hmac(const u8 key[32], const u8 *data, u32 data_len,
+	u8 out[32])
 {
 	struct blake2s_state state;
 	u8 padded_key[BLAKE2S_BLOCK_SIZE];
@@ -121,6 +151,7 @@ void wg_blake2s_256_hmac(const u8 key[32], const u8 *data, u32 data_len, u8 out[
 }
 EXPORT_SYMBOL_GPL(wg_blake2s_256_hmac);
 
+/* HKDF: extract + expand to 3 outputs. out3 may be NULL. */
 void wg_hkdf(const u8 key[32], const u8 *input, u32 input_len,
 	u8 out1[32], u8 out2[32], u8 out3[32])
 {
@@ -147,8 +178,37 @@ void wg_hkdf(const u8 key[32], const u8 *input, u32 input_len,
 }
 EXPORT_SYMBOL_GPL(wg_hkdf);
 
+/* ── Curve25519 ────────────────────────────────────────────────────── */
+
+int wg_curve25519(u8 out[32], const u8 scalar[32], const u8 point[32])
+{
+	return curve25519(out, scalar, point) ? 0 : -EINVAL;
+}
+EXPORT_SYMBOL_GPL(wg_curve25519);
+
+void wg_curve25519_generate_secret(u8 secret[32])
+{
+	curve25519_generate_secret(secret);
+}
+EXPORT_SYMBOL_GPL(wg_curve25519_generate_secret);
+
+void wg_curve25519_generate_public(u8 pub_key[32], const u8 secret[32])
+{
+	if (!curve25519_generate_public(pub_key, secret))
+		memset(pub_key, 0, 32);
+}
+EXPORT_SYMBOL_GPL(wg_curve25519_generate_public);
+
+/* ── Random + Lifecycle ────────────────────────────────────────────── */
+
 void wg_get_random_bytes(u8 *buf, u32 len)
 {
 	get_random_bytes(buf, len);
 }
 EXPORT_SYMBOL_GPL(wg_get_random_bytes);
+
+int wg_crypto_init(void) { return 0; }
+EXPORT_SYMBOL_GPL(wg_crypto_init);
+
+void wg_crypto_exit(void) {}
+EXPORT_SYMBOL_GPL(wg_crypto_exit);
