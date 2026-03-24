@@ -156,6 +156,7 @@ unsafe fn cleanup_state(ptr: *mut DeviceState) {
 
 // ── TX path ───────────────────────────────────────────────────────────
 
+/// TX callback from C shim — encrypt and send via UDP.
 #[no_mangle]
 pub extern "C" fn rustguard_xmit(skb: VoidPtr, priv_: VoidPtr) -> i32 {
     // SAFETY: priv_ is a valid DeviceState pointer stored by wg_create_device.
@@ -228,6 +229,7 @@ unsafe fn do_xmit(skb: VoidPtr, priv_: VoidPtr) -> i32 {
 
 // ── RX path ───────────────────────────────────────────────────────────
 
+/// RX callback from C shim — decrypt and inject into kernel stack.
 #[no_mangle]
 pub extern "C" fn rustguard_rx(skb: VoidPtr, priv_: VoidPtr) -> i32 {
     // SAFETY: same as xmit — valid pointers from C.
@@ -307,6 +309,7 @@ unsafe fn do_rx(skb: VoidPtr, priv_: VoidPtr) -> i32 {
     }
 }
 
+/// Device teardown callback from C shim.
 #[no_mangle]
 pub extern "C" fn rustguard_dev_uninit(_priv: VoidPtr) {}
 
