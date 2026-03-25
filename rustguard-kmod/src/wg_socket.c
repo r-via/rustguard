@@ -167,3 +167,10 @@ u8 *wg_skb_data_ptr(struct sk_buff *skb)
 	return skb->data;
 }
 EXPORT_SYMBOL_GPL(wg_skb_data_ptr);
+
+void wg_skb_trim(struct sk_buff *skb, unsigned int len);
+void wg_skb_trim(struct sk_buff *skb, unsigned int len)
+{
+	skb_trim(skb, len);
+}
+EXPORT_SYMBOL_GPL(wg_skb_trim);

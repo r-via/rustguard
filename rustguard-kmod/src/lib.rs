@@ -41,7 +41,7 @@ extern "C" {
     fn wg_alloc_skb(len: u32) -> VoidPtr;
     fn skb_put(skb: VoidPtr, len: u32) -> *mut u8;
 
-    // wg_crypto.c
+    // wg_crypto.c — buffer-based (for handshake, keepalive)
     fn wg_chacha20poly1305_encrypt(
         key: *const u8, nonce: u64, src: *const u8, src_len: u32,
         ad: *const u8, ad_len: u32, dst: *mut u8,
@@ -50,8 +50,17 @@ extern "C" {
         key: *const u8, nonce: u64, src: *const u8, src_len: u32,
         ad: *const u8, ad_len: u32, dst: *mut u8,
     ) -> i32;
+    // wg_crypto.c — zero-copy skb (for transport hot path)
+    fn wg_encrypt_skb(skb: VoidPtr, plaintext_off: u32, plaintext_len: u32,
+                      nonce: u64, key: *const u8) -> i32;
+    fn wg_decrypt_skb(skb: VoidPtr, ct_off: u32, ct_len: u32,
+                      nonce: u64, key: *const u8) -> i32;
     fn wg_crypto_init() -> i32;
     fn wg_crypto_exit();
+
+    // wg_net.c — zero-copy skb helpers
+    fn wg_skb_prepend_header(skb: VoidPtr, header_size: u32, tag_size: u32) -> VoidPtr;
+    fn wg_socket_send_skb(sock: VoidPtr, skb: VoidPtr, dst_ip: u32, dst_port: u16) -> i32;
 
     // wg_genl.c
     fn wg_genl_init() -> i32;
@@ -369,63 +378,66 @@ unsafe fn do_xmit(skb: VoidPtr, priv_: VoidPtr) -> i32 {
 
         let plaintext = core::slice::from_raw_parts(data_ptr, data_len as usize);
 
-        // AllowedIPs lookup: which peer should this packet go to?
+        // AllowedIPs lookup.
         let peer_idx = match state.allowed_ips.lookup_packet(plaintext) {
             Some(idx) => idx,
             None => { wg_kfree_skb(skb); return 0; }
         };
-
         let peer = match &state.peers[peer_idx] {
             Some(p) => p,
             None => { wg_kfree_skb(skb); return 0; }
         };
-
         let session = match &peer.session {
             Some(s) => s,
             None => { wg_kfree_skb(skb); return 0; }
         };
 
-        // C5: Check REJECT_AFTER_MESSAGES / session expiry before sending.
-        // Use a peek at the counter (Relaxed is fine — worst case we send one
-        // extra packet before the next check catches it).
+        // C5: session expiry check.
         let current_counter = session.send_counter.load(Ordering::Relaxed);
         if peer.timers.is_expired(current_counter) {
             wg_kfree_skb(skb);
             return 0;
         }
 
-        let total_len = WG_HEADER_SIZE + data_len as usize + AEAD_TAG_SIZE;
-        let mut buf = [0u8; 2048];
-        if total_len > buf.len() {
-            wg_kfree_skb(skb);
+        // Zero-copy path: build transport skb from plaintext skb.
+        // wg_skb_prepend_header copies plaintext into a new skb with header + tag room.
+        let tx_skb = wg_skb_prepend_header(
+            skb, WG_HEADER_SIZE as u32, AEAD_TAG_SIZE as u32,
+        );
+        wg_kfree_skb(skb); // free original plaintext skb
+
+        if tx_skb.is_null() { return 0; }
+
+        // Write WireGuard header into the first 16 bytes.
+        let counter = session.send_counter.fetch_add(1, Ordering::Relaxed);
+        let hdr = wg_skb_data_ptr(tx_skb);
+        let hdr_slice = core::slice::from_raw_parts_mut(hdr, WG_HEADER_SIZE);
+        hdr_slice[0..4].copy_from_slice(&noise::MSG_TRANSPORT.to_le_bytes());
+        hdr_slice[4..8].copy_from_slice(&session.their_index.to_le_bytes());
+        hdr_slice[8..16].copy_from_slice(&counter.to_le_bytes());
+
+        // Encrypt in-place: the plaintext starts at offset WG_HEADER_SIZE.
+        let ret = wg_encrypt_skb(
+            tx_skb,
+            WG_HEADER_SIZE as u32,
+            data_len,
+            counter,
+            session.key_send.as_ptr(),
+        );
+
+        if ret != 0 {
+            wg_kfree_skb(tx_skb);
             return 0;
         }
 
-        let counter = session.send_counter.fetch_add(1, Ordering::Relaxed);
-        buf[0..4].copy_from_slice(&noise::MSG_TRANSPORT.to_le_bytes());
-        buf[4..8].copy_from_slice(&session.their_index.to_le_bytes());
-        buf[8..16].copy_from_slice(&counter.to_le_bytes());
-
-        let ret = wg_chacha20poly1305_encrypt(
-            session.key_send.as_ptr(), counter,
-            plaintext.as_ptr(), data_len,
-            core::ptr::null(), 0,
-            buf.as_mut_ptr().add(WG_HEADER_SIZE),
-        );
-
-        wg_kfree_skb(skb);
-
-        if ret != 0 { return 0; }
-
-        wg_socket_send(
-            state.udp_sock, buf.as_ptr(), total_len as u32,
+        // Send the encrypted skb via UDP.
+        wg_socket_send_skb(
+            state.udp_sock, tx_skb,
             peer.endpoint_ip, peer.endpoint_port,
         );
-        wg_tx_stats(state.net_dev, data_len);
+        wg_kfree_skb(tx_skb);
 
-        // Update timer (can't mutate peer from TX path, but packet_sent
-        // only writes a timestamp — acceptable race with timer tick).
-        // peer.timers.packet_sent(); // TODO: needs mutable access
+        wg_tx_stats(state.net_dev, data_len);
 
         0
     }
@@ -679,61 +691,50 @@ unsafe fn handle_transport(
             return;
         }
 
-        let encrypted = &pkt[WG_HEADER_SIZE..];
-        let encrypted_len = encrypted.len();
+        let ct_len = (pkt_len - WG_HEADER_SIZE) as u32;
 
-        let mut plaintext_buf = [0u8; 2048];
-        if encrypted_len > plaintext_buf.len() {
+        // Zero-copy decrypt: try current session, then previous.
+        let mut decrypted = false;
+        if let Some(ref session) = peer.session {
+            if wg_decrypt_skb(skb, WG_HEADER_SIZE as u32, ct_len,
+                              counter, session.key_recv.as_ptr()) == 0 {
+                decrypted = true;
+            }
+        }
+        if !decrypted {
+            if let Some(ref prev) = peer.prev_session {
+                if wg_decrypt_skb(skb, WG_HEADER_SIZE as u32, ct_len,
+                                  counter, prev.key_recv.as_ptr()) == 0 {
+                    decrypted = true;
+                }
+            }
+        }
+
+        if !decrypted {
             wg_kfree_skb(skb);
             return;
         }
 
-        // Try current session first, then previous (handles in-flight during rekey).
-        let mut decrypted = false;
-        if let Some(ref session) = peer.session {
-            let ret = wg_chacha20poly1305_decrypt(
-                session.key_recv.as_ptr(), counter,
-                encrypted.as_ptr(), encrypted_len as u32,
-                core::ptr::null(), 0,
-                plaintext_buf.as_mut_ptr(),
-            );
-            if ret == 0 { decrypted = true; }
-        }
-        if !decrypted {
-            if let Some(ref prev) = peer.prev_session {
-                let ret = wg_chacha20poly1305_decrypt(
-                    prev.key_recv.as_ptr(), counter,
-                    encrypted.as_ptr(), encrypted_len as u32,
-                    core::ptr::null(), 0,
-                    plaintext_buf.as_mut_ptr(),
-                );
-                if ret == 0 { decrypted = true; }
-            }
-        }
-
-        wg_kfree_skb(skb);
-
-        if !decrypted { return; }
-
         peer.replay_window.update(counter);
         peer.timers.packet_received();
 
-        // Roaming: update endpoint on authenticated data.
-        // Only change if the source actually differs (avoid cache line dirtying).
         if peer.endpoint_ip != src_ip || peer.endpoint_port != src_port {
             peer.endpoint_ip = src_ip;
             peer.endpoint_port = src_port;
         }
 
-        let plaintext_len = encrypted_len - AEAD_TAG_SIZE;
+        let plaintext_len = ct_len as usize - AEAD_TAG_SIZE;
 
-        let new_skb = wg_alloc_skb(plaintext_len as u32);
-        if new_skb.is_null() { return; }
+        // Strip WG header + AEAD tag, leaving just the decrypted plaintext.
+        extern "C" {
+            fn wg_skb_pull(skb: VoidPtr, len: u32);
+            fn wg_skb_trim(skb: VoidPtr, len: u32);
+        }
+        wg_skb_pull(skb, WG_HEADER_SIZE as u32);
+        wg_skb_trim(skb, plaintext_len as u32);
 
-        let dest = skb_put(new_skb, plaintext_len as u32);
-        core::ptr::copy_nonoverlapping(plaintext_buf.as_ptr(), dest, plaintext_len);
-
-        wg_net_rx((*state).net_dev, new_skb);
+        wg_net_rx((*state).net_dev, skb);
+        // skb ownership transferred to netif_rx — don't free.
     }
 }
 

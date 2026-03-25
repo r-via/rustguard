@@ -9,6 +9,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/random.h>
+#include <linux/skbuff.h>
 #include <crypto/chacha20poly1305.h>
 #include <crypto/blake2s.h>
 #include <crypto/curve25519.h>
@@ -178,6 +179,70 @@ void wg_hkdf(const u8 key[32], const u8 *input, u32 input_len,
 	memzero_explicit(t_input, sizeof(t_input));
 }
 EXPORT_SYMBOL_GPL(wg_hkdf);
+
+/* ── Zero-copy skb encrypt/decrypt ─────────────────────────────────── */
+
+/*
+ * Encrypt an skb's payload in-place using scatter-gather AEAD.
+ * The skb must have headroom for the WireGuard header (already written)
+ * and tailroom for the 16-byte AEAD tag.
+ *
+ * This is the same approach as kernel WireGuard (send.c:216):
+ *   chacha20poly1305_encrypt_sg_inplace(sg, plaintext_len, ...)
+ *
+ * Returns 0 on success.
+ */
+int wg_encrypt_skb(struct sk_buff *skb, u32 plaintext_off, u32 plaintext_len,
+		   u64 nonce, const u8 key[32]);
+int wg_encrypt_skb(struct sk_buff *skb, u32 plaintext_off, u32 plaintext_len,
+		   u64 nonce, const u8 key[32])
+{
+	struct scatterlist sg;
+	int ret;
+
+	/* Ensure there's room for the tag after the plaintext. */
+	ret = skb_cow_data(skb, CHACHA20POLY1305_AUTHTAG_SIZE, NULL);
+	if (ret < 0)
+		return ret;
+
+	/* Build SG over the plaintext region of the skb. */
+	sg_init_one(&sg, skb->data + plaintext_off,
+		    plaintext_len + CHACHA20POLY1305_AUTHTAG_SIZE);
+
+	if (!chacha20poly1305_encrypt_sg_inplace(&sg, plaintext_len,
+						  NULL, 0, nonce, key))
+		return -EINVAL;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(wg_encrypt_skb);
+
+/*
+ * Decrypt an skb's payload in-place using scatter-gather AEAD.
+ * The encrypted region starts at `ct_off` and is `ct_len` bytes
+ * (including the 16-byte tag).
+ *
+ * Returns 0 on success, -EBADMSG on auth failure.
+ */
+int wg_decrypt_skb(struct sk_buff *skb, u32 ct_off, u32 ct_len,
+		   u64 nonce, const u8 key[32]);
+int wg_decrypt_skb(struct sk_buff *skb, u32 ct_off, u32 ct_len,
+		   u64 nonce, const u8 key[32])
+{
+	struct scatterlist sg;
+
+	if (ct_len < CHACHA20POLY1305_AUTHTAG_SIZE)
+		return -EINVAL;
+
+	sg_init_one(&sg, skb->data + ct_off, ct_len);
+
+	if (!chacha20poly1305_decrypt_sg_inplace(&sg, ct_len,
+						  NULL, 0, nonce, key))
+		return -EBADMSG;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(wg_decrypt_skb);
 
 /* ── Curve25519 ────────────────────────────────────────────────────── */
 

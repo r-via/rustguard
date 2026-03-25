@@ -229,3 +229,66 @@ void wg_tx_stats(struct net_device *dev, unsigned int bytes)
 	dev->stats.tx_bytes += bytes;
 }
 EXPORT_SYMBOL_GPL(wg_tx_stats);
+
+/*
+ * Build a transport skb from a plaintext skb:
+ * 1. Clone the skb (we need to modify it)
+ * 2. Push WG_HEADER_SIZE bytes of headroom for the WireGuard header
+ * 3. Put AEAD_TAG_SIZE bytes of tailroom for the tag
+ * Returns NULL on failure. Caller must free the original skb.
+ */
+struct sk_buff *wg_skb_prepend_header(struct sk_buff *skb, unsigned int header_size,
+				      unsigned int tag_size);
+struct sk_buff *wg_skb_prepend_header(struct sk_buff *skb, unsigned int header_size,
+				      unsigned int tag_size)
+{
+	struct sk_buff *nskb;
+	unsigned int total = header_size + skb->len + tag_size;
+
+	nskb = alloc_skb(total, GFP_ATOMIC);
+	if (!nskb)
+		return NULL;
+
+	/* Reserve space for header. */
+	skb_reserve(nskb, header_size);
+
+	/* Copy plaintext payload. */
+	skb_put_data(nskb, skb->data, skb->len);
+
+	/* Make room for the AEAD tag. */
+	skb_put(nskb, tag_size);
+
+	/* Push back to make room for the WG header at the front. */
+	skb_push(nskb, header_size);
+
+	return nskb;
+}
+EXPORT_SYMBOL_GPL(wg_skb_prepend_header);
+
+/*
+ * Send an skb as a UDP packet. Takes ownership of the data in the skb
+ * (copies it via kernel_sendmsg, then the caller frees the skb).
+ */
+int wg_socket_send_skb(struct socket *sock, struct sk_buff *skb,
+		       unsigned int dst_ip, unsigned short dst_port);
+int wg_socket_send_skb(struct socket *sock, struct sk_buff *skb,
+		       unsigned int dst_ip, unsigned short dst_port)
+{
+	struct msghdr msg = {};
+	struct kvec iov;
+	struct sockaddr_in dst;
+
+	dst.sin_family = AF_INET;
+	dst.sin_port = htons(dst_port);
+	dst.sin_addr.s_addr = htonl(dst_ip);
+
+	msg.msg_name = &dst;
+	msg.msg_namelen = sizeof(dst);
+	msg.msg_flags = MSG_DONTWAIT;
+
+	iov.iov_base = skb->data;
+	iov.iov_len = skb->len;
+
+	return kernel_sendmsg(sock, &msg, &iov, 1, skb->len);
+}
+EXPORT_SYMBOL_GPL(wg_socket_send_skb);
