@@ -10,7 +10,7 @@ use kernel::alloc::KBox;
 use kernel::prelude::*;
 
 /// Maximum number of peers we support.
-pub(crate) const MAX_PEERS: usize = 64;
+pub(crate) const MAX_PEERS: usize = 8;
 
 /// A node in the radix trie.
 struct TrieNode {
