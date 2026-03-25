@@ -16,7 +16,6 @@
 #include <linux/skbuff.h>
 #include <linux/netdevice.h>
 #include <linux/slab.h>
-#include <linux/scatterlist.h>
 #include <crypto/chacha20poly1305.h>
 
 #define WG_HEADER_SIZE 16
@@ -67,16 +66,16 @@ static struct workqueue_struct *wg_crypt_wq;
 static void wg_encrypt_worker(struct work_struct *work)
 {
 	struct wg_encrypt_work *w = container_of(work, struct wg_encrypt_work, work);
-	struct scatterlist sg;
 	u8 *pt = w->skb->data + w->plaintext_off;
 	struct msghdr msg = {};
 	struct kvec iov;
 	struct sockaddr_in dst;
 
-	/* SG encrypt in-place — safe in process context. */
-	sg_init_one(&sg, pt, w->plaintext_len + CHACHA20POLY1305_AUTHTAG_SIZE);
-	chacha20poly1305_encrypt_sg_inplace(&sg, w->plaintext_len,
-					    NULL, 0, w->nonce, w->key);
+	/* Buffer-based encrypt in-place.
+	 * sg_init_one crashes on page-spanning data even in process context —
+	 * the issue is virt_to_page, not FPU context. */
+	chacha20poly1305_encrypt(pt, pt, w->plaintext_len,
+				 NULL, 0, w->nonce, w->key);
 
 	/* Send via UDP. */
 	dst.sin_family = AF_INET;
