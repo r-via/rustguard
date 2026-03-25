@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
+#![allow(dead_code)]
 
 //! RustGuard — WireGuard kernel module in Rust.
 //!
@@ -18,15 +19,10 @@ module! {
     license: "GPL",
 }
 
-#[allow(dead_code)]
 mod noise;
-#[allow(dead_code)]
 mod allowedips;
-#[allow(dead_code)]
 mod replay;
-#[allow(dead_code)]
 mod timers;
-#[allow(dead_code)]
 mod cookie;
 
 // ── FFI declarations ──────────────────────────────────────────────────
