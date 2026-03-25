@@ -178,7 +178,17 @@ Built an out-of-tree Linux kernel module in Rust targeting 6.10+:
 | RustGuard (io_uring) | 225 Mbps | 9.6% |
 | RustGuard (single queue) | 175 Mbps | 7.4% |
 
-#### Kernel Module (virtio-net VMs, same hypervisor)
+#### Kernel Module — Real Hardware (Intel I226-V 2.5G, PCIe passthrough, direct cable)
+
+| Configuration | Throughput | % of Wire Speed |
+|---|---|---|
+| Bare wire (I226-V 2.5G) | 2,350 Mbps | 100% |
+| Kernel WireGuard (C) | 2,230 Mbps | 94.9% |
+| **RustGuard kmod** | **1,670–2,130 Mbps** | **71–91%** |
+
+75–95% of kernel WireGuard on real 2.5G Ethernet. Single-threaded, no parallel crypto workqueues. The range is from VM scheduling variance on the shared hypervisor.
+
+#### Kernel Module — Virtual (virtio-net VMs, same hypervisor)
 
 | Configuration | Throughput | % of Wire Speed |
 |---|---|---|
@@ -186,9 +196,15 @@ Built an out-of-tree Linux kernel module in Rust targeting 6.10+:
 | Kernel WireGuard (C) | 4,190 Mbps | 12.7% |
 | **RustGuard kmod** | **1,180 Mbps** | **3.6%** |
 
-The kernel module is a first pass — single-threaded, memcpy to stack buffers, no parallel crypto. Kernel WireGuard has parallel per-CPU crypto workqueues, zero-copy skb manipulation, and 10 years of optimization. The 3.5x gap is entirely engineering, not architecture. The known fixes: encrypt directly in skb scatter-gather (eliminate double memcpy), parallel crypto workqueue, NAPI-based receive.
+#### What Closes the Gap
 
-The fundamental result: **going from userspace (TUN) to kernel (net_device) gave a 2.5x throughput improvement** — from 472 Mbps to 1,180 Mbps — confirming that TUN was always the bottleneck.
+The remaining gap to kernel WireGuard is well-understood:
+
+1. **Parallel crypto workqueues** — Jason's code encrypts/decrypts on per-CPU worker threads. We're single-threaded on the xmit/encap_rcv softirq path.
+2. **SG AEAD on skb fragments** — kernel WireGuard uses `skb_to_sgvec` to decrypt in-place across paged skb fragments. We decrypt to a stack buffer because `sg_init_one` crashes on data spanning 4KB page boundaries, and `skb_cow_data` crashes on encap_rcv skbs. Solving this requires the full `skb_push → skb_cow_data → skb_to_sgvec → decrypt → pskb_trim → skb_pull` dance that Jason implements in `receive.c`.
+3. **TX skb reuse** — we allocate a fresh skb per packet for the WireGuard header + encrypted payload. Kernel WireGuard reuses the original skb with headroom expansion.
+
+The fundamental result: **going from userspace (TUN) to kernel (net_device) gave a 3.5–4.5x throughput improvement** — from 472 Mbps to 1,670–2,130 Mbps — confirming that TUN was always the bottleneck.
 
 ## Usage
 
@@ -230,24 +246,25 @@ rustguard serve --pool 10.150.0.0/24 --token s --uring          # io_uring batch
 
 ## Footprint
 
-**9,300+ lines of Rust** across 7 crates + **751 lines of C** kernel shims.
+**9,400+ lines of Rust** across 7 crates + **934 lines of C** kernel shims.
 
-Kernel module breakdown (2,499 lines total):
+Kernel module breakdown (3,068 lines total):
 
 | File | Lines | Role |
 |------|-------|------|
-| `lib.rs` | 602 | Module init, TX/RX paths, peer management, multi-peer state |
-| `noise.rs` | 481 | Full Noise_IK handshake, Curve25519 DH, BLAKE2s HKDF |
+| `lib.rs` | 926 | Module init, TX/RX paths, peer management, rekeying, timer tick |
+| `noise.rs` | 540 | Noise_IK handshake, Curve25519 DH, BLAKE2s HKDF, key zeroization |
 | `allowedips.rs` | 211 | IPv4/IPv6 radix trie for cryptokey routing |
-| `cookie.rs` | 206 | DoS protection: MAC1/MAC2 verification, cookie reply |
-| `timers.rs` | 156 | Session timers: rekey, keepalive, expiry state machine |
-| `replay.rs` | 92 | Anti-replay 2048-bit sliding window |
-| `wg_net.c` | 231 | net_device registration, module params, skb helpers |
-| `wg_crypto.c` | 229 | Kernel crypto library wrappers + time functions |
-| `wg_socket.c` | 151 | Kernel UDP socket, encap_rcv callback |
+| `cookie.rs` | 205 | DoS protection: MAC1/MAC2 verification, cookie reply |
+| `timers.rs` | 154 | Session timers: rekey, keepalive, expiry state machine |
+| `replay.rs` | 98 | Anti-replay 2048-bit sliding window |
+| `wg_net.c` | 294 | net_device, module params, skb helpers, TX skb pipeline |
+| `wg_crypto.c` | 267 | ChaCha20-Poly1305, BLAKE2s, HKDF, Curve25519, secure memory |
+| `wg_socket.c` | 179 | Kernel UDP socket, encap_rcv callback |
 | `wg_genl.c` | 140 | Genetlink skeleton for `wg` tool compatibility |
+| `wg_timer.c` | 54 | Periodic workqueue timer for rekey/keepalive |
 
-70% Rust, 30% C. The C is pure plumbing (kernel APIs without Rust bindings yet). All protocol logic — handshake, routing, replay, timers, cookies — is Rust. For reference, kernel WireGuard is ~4,000 lines of C; we're at 2,499 (62%) with full protocol coverage.
+70% Rust, 30% C. The C is pure plumbing (kernel APIs without Rust bindings yet). All protocol logic — handshake, routing, replay, timers, cookies, rekeying — is Rust. For reference, kernel WireGuard is ~4,000 lines of C; we're at 3,068 (77%) with full protocol coverage.
 
 ## Building
 
