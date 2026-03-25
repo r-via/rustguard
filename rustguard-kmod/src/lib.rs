@@ -158,21 +158,14 @@ impl kernel::Module for RustGuard {
         let hex_str = unsafe { core::str::from_utf8_unchecked(&hex_buf) };
         pr_info!("rustguard: pubkey={}\n", hex_str);
 
-        // Allocate DeviceState on the heap first to avoid kernel stack overflow.
-        // KBox::new_uninit avoids constructing the large struct on the stack.
-        let state_box = KBox::new(
-            DeviceState {
-                net_dev: core::ptr::null_mut(),
-                udp_sock: core::ptr::null_mut(),
-                static_secret,
-                static_public,
-                peers: [const { None }; allowedips::MAX_PEERS],
-                peer_count: 0,
-                allowed_ips: allowedips::AllowedIps::new(),
-                index_map: [None; 256],
-            },
-            GFP_KERNEL,
-        )?;
+        // Allocate DeviceState on the heap via zeroed init to avoid stack overflow.
+        // The struct is ~6KB which is too large for the kernel stack.
+        let state_box = KBox::new_zeroed(GFP_KERNEL)?;
+        // SAFETY: DeviceState is valid when zero-initialized (all pointers null,
+        // all Options are None when zeroed, all arrays zero).
+        let mut state_box = unsafe { state_box.assume_init() };
+        state_box.static_secret = static_secret;
+        state_box.static_public = static_public;
         let state_raw = KBox::into_raw(state_box);
         DEVICE_STATE_PTR.store(state_raw, Ordering::Release);
         let state_void = state_raw as VoidPtr;
