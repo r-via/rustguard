@@ -221,29 +221,68 @@ EXPORT_SYMBOL_GPL(wg_encrypt_skb);
  * Returns 0 on success, -EBADMSG on auth failure.
  */
 /*
- * Decrypt skb payload in-place.
- * The skb MUST be linear and writable (caller ensures via skb_copy).
- * Uses sg_init_one for the simple linear case.
+ * Full RX decrypt pipeline: copy skb → SG decrypt in-place → strip header → trim tag.
+ * Returns a NEW skb containing just the decrypted plaintext, or NULL on failure.
+ * The original skb is NOT consumed — caller must free it.
+ *
+ * Why all in C: sg_init_one can't handle page-boundary crossings.
+ * skb_to_sgvec handles them correctly but requires careful skb manipulation
+ * that's safer to do entirely in C where we can inspect the result.
  */
-int wg_decrypt_skb(struct sk_buff *skb, u32 ct_off, u32 ct_len,
-		   u64 nonce, const u8 key[32]);
-int wg_decrypt_skb(struct sk_buff *skb, u32 ct_off, u32 ct_len,
-		   u64 nonce, const u8 key[32])
+struct sk_buff *wg_decrypt_skb_full(struct sk_buff *skb, u32 hdr_len,
+				    u64 nonce, const u8 key[32]);
+struct sk_buff *wg_decrypt_skb_full(struct sk_buff *skb, u32 hdr_len,
+				    u64 nonce, const u8 key[32])
 {
-	struct scatterlist sg;
+	struct sk_buff *nskb;
+	struct scatterlist sg[MAX_SKB_FRAGS + 1];
+	struct sk_buff *trailer;
+	int num_frags;
+	u32 ct_len;
 
-	if (ct_len < CHACHA20POLY1305_AUTHTAG_SIZE)
-		return -EINVAL;
+	if (skb->len <= hdr_len + CHACHA20POLY1305_AUTHTAG_SIZE)
+		return NULL;
 
-	sg_init_one(&sg, skb->data + ct_off, ct_len);
+	ct_len = skb->len - hdr_len;
 
-	if (!chacha20poly1305_decrypt_sg_inplace(&sg, ct_len,
-						  NULL, 0, nonce, key))
-		return -EBADMSG;
+	/* Make a writable copy. */
+	nskb = skb_copy(skb, GFP_ATOMIC);
+	if (!nskb)
+		return NULL;
 
-	return 0;
+	/* Pull the WireGuard header so data starts at ciphertext. */
+	skb_pull(nskb, hdr_len);
+
+	/* skb_cow_data ensures the data is writable and returns frag count. */
+	num_frags = skb_cow_data(nskb, 0, &trailer);
+	if (unlikely(num_frags < 0 || num_frags > ARRAY_SIZE(sg))) {
+		kfree_skb(nskb);
+		return NULL;
+	}
+
+	/* Build proper multi-page SG list. */
+	sg_init_table(sg, num_frags);
+	if (skb_to_sgvec(nskb, sg, 0, ct_len) <= 0) {
+		kfree_skb(nskb);
+		return NULL;
+	}
+
+	/* Decrypt in place. */
+	if (!chacha20poly1305_decrypt_sg_inplace(sg, ct_len,
+						  NULL, 0, nonce, key)) {
+		kfree_skb(nskb);
+		return NULL;
+	}
+
+	/* Trim the AEAD tag. */
+	if (pskb_trim(nskb, ct_len - CHACHA20POLY1305_AUTHTAG_SIZE)) {
+		kfree_skb(nskb);
+		return NULL;
+	}
+
+	return nskb;
 }
-EXPORT_SYMBOL_GPL(wg_decrypt_skb);
+EXPORT_SYMBOL_GPL(wg_decrypt_skb_full);
 
 /* ── Curve25519 ────────────────────────────────────────────────────── */
 

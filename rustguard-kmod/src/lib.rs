@@ -53,8 +53,11 @@ extern "C" {
     // wg_crypto.c — zero-copy skb (for transport hot path)
     fn wg_encrypt_skb(skb: VoidPtr, plaintext_off: u32, plaintext_len: u32,
                       nonce: u64, key: *const u8) -> i32;
-    fn wg_decrypt_skb(skb: VoidPtr, ct_off: u32, ct_len: u32,
-                      nonce: u64, key: *const u8) -> i32;
+    /// Full RX pipeline: copy → SG decrypt → pull header → trim tag.
+    /// Returns new skb with plaintext, or null on failure.
+    /// Original skb is NOT consumed.
+    fn wg_decrypt_skb_full(skb: VoidPtr, hdr_len: u32,
+                           nonce: u64, key: *const u8) -> VoidPtr;
     fn wg_crypto_init() -> i32;
     fn wg_crypto_exit();
 
@@ -691,35 +694,26 @@ unsafe fn handle_transport(
             return;
         }
 
-        let encrypted = &pkt[WG_HEADER_SIZE..];
-        let encrypted_len = encrypted.len();
+        // Zero-copy RX: all-in-C pipeline handles skb_copy → skb_cow_data →
+        // skb_to_sgvec → decrypt → pskb_trim. Returns new plaintext skb.
+        let mut pt_skb: VoidPtr = core::ptr::null_mut();
 
-        let mut plaintext_buf = [0u8; 2048];
-        if encrypted_len > plaintext_buf.len() {
-            wg_kfree_skb(skb);
-            return;
-        }
-
-        let mut decrypted = false;
         if let Some(ref session) = peer.session {
-            if wg_chacha20poly1305_decrypt(
-                session.key_recv.as_ptr(), counter,
-                encrypted.as_ptr(), encrypted_len as u32,
-                core::ptr::null(), 0, plaintext_buf.as_mut_ptr(),
-            ) == 0 { decrypted = true; }
+            pt_skb = wg_decrypt_skb_full(
+                skb, WG_HEADER_SIZE as u32, counter, session.key_recv.as_ptr(),
+            );
         }
-        if !decrypted {
+        if pt_skb.is_null() {
             if let Some(ref prev) = peer.prev_session {
-                if wg_chacha20poly1305_decrypt(
-                    prev.key_recv.as_ptr(), counter,
-                    encrypted.as_ptr(), encrypted_len as u32,
-                    core::ptr::null(), 0, plaintext_buf.as_mut_ptr(),
-                ) == 0 { decrypted = true; }
+                pt_skb = wg_decrypt_skb_full(
+                    skb, WG_HEADER_SIZE as u32, counter, prev.key_recv.as_ptr(),
+                );
             }
         }
 
-        wg_kfree_skb(skb);
-        if !decrypted { return; }
+        wg_kfree_skb(skb); // free original (wg_decrypt_skb_full made a copy)
+
+        if pt_skb.is_null() { return; }
 
         peer.replay_window.update(counter);
         peer.timers.packet_received();
@@ -729,12 +723,7 @@ unsafe fn handle_transport(
             peer.endpoint_port = src_port;
         }
 
-        let plaintext_len = encrypted_len - AEAD_TAG_SIZE;
-        let new_skb = wg_alloc_skb(plaintext_len as u32);
-        if new_skb.is_null() { return; }
-        let dest = skb_put(new_skb, plaintext_len as u32);
-        core::ptr::copy_nonoverlapping(plaintext_buf.as_ptr(), dest, plaintext_len);
-        wg_net_rx((*state).net_dev, new_skb);
+        wg_net_rx((*state).net_dev, pt_skb);
     }
 }
 
