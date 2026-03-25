@@ -235,7 +235,6 @@ struct sk_buff *wg_decrypt_skb_full(struct sk_buff *skb, u32 hdr_len,
 				    u64 nonce, const u8 key[32])
 {
 	struct sk_buff *nskb;
-	struct scatterlist sg;
 	u32 ct_len;
 
 	if (skb->len <= hdr_len + CHACHA20POLY1305_AUTHTAG_SIZE)
@@ -255,20 +254,17 @@ struct sk_buff *wg_decrypt_skb_full(struct sk_buff *skb, u32 hdr_len,
 	/* Pull the WireGuard header so data starts at ciphertext. */
 	skb_pull(nskb, hdr_len);
 
-	/* Single SG entry — skb_copy guarantees linear data.
-	 * No skb_cow_data needed (it crashes on some encap_rcv skb states).
-	 * No skb_to_sgvec needed (data is contiguous, no frags). */
-	sg_init_one(&sg, nskb->data, ct_len);
-
-	/* Decrypt in place. */
-	if (!chacha20poly1305_decrypt_sg_inplace(&sg, ct_len,
-						  NULL, 0, nonce, key)) {
+	/* Use the non-SG buffer-based decrypt directly on the linear data.
+	 * chacha20poly1305_decrypt handles page mapping internally.
+	 * sg_init_one + decrypt_sg_inplace crashes on skb_copy data
+	 * (possibly vmalloc'd for large allocations). */
+	if (!chacha20poly1305_decrypt(nskb->data, nskb->data, ct_len,
+				      NULL, 0, nonce, key)) {
 		kfree_skb(nskb);
 		return NULL;
 	}
 
-	/* Trim the AEAD tag by adjusting skb->len directly.
-	 * skb_copy guaranteed linear, so skb_trim is safe (no frags). */
+	/* Trim the AEAD tag. */
 	skb_trim(nskb, ct_len - CHACHA20POLY1305_AUTHTAG_SIZE);
 
 	return nskb;
