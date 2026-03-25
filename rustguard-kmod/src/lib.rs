@@ -796,7 +796,7 @@ unsafe fn initiate_rekey(state: *mut DeviceState, peer_idx: usize) {
 /// Send an empty keepalive transport packet.
 unsafe fn send_keepalive(state: *mut DeviceState, peer_idx: usize) {
     unsafe {
-        let peer = match &(*state).peers[peer_idx] {
+        let peer = match &mut (*state).peers[peer_idx] {
             Some(p) => p,
             None => return,
         };
@@ -814,7 +814,7 @@ unsafe fn send_keepalive(state: *mut DeviceState, peer_idx: usize) {
 
         wg_chacha20poly1305_encrypt(
             session.key_send.as_ptr(), counter,
-            core::ptr::null(), 0, // empty plaintext
+            core::ptr::null(), 0,
             core::ptr::null(), 0,
             buf.as_mut_ptr().add(WG_HEADER_SIZE),
         );
