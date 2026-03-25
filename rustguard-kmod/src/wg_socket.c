@@ -67,12 +67,9 @@ static int wg_udp_encap_recv(struct sock *sk, struct sk_buff *skb)
 	/* Strip the UDP header — we want the WireGuard payload. */
 	__skb_pull(skb, sizeof(struct udphdr));
 
-	/* Ensure the skb data is linear AND writable.
-	 * skb_linearize handles fragments but the skb may still be cloned
-	 * (shared refcount). pskb_expand_head with 0 headroom forces an
-	 * unclone — the data becomes exclusively ours for in-place decrypt. */
-	if (skb_linearize(skb) ||
-	    pskb_expand_head(skb, 0, 0, GFP_ATOMIC)) {
+	/* Ensure the skb data is linear, writable, and exclusively ours.
+	 * skb_cow ensures both linearization and uncloning in one call. */
+	if (skb_cow(skb, 0)) {
 		kfree_skb(skb);
 		return 0;
 	}
