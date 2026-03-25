@@ -192,23 +192,22 @@ EXPORT_SYMBOL_GPL(wg_hkdf);
  *
  * Returns 0 on success.
  */
+/*
+ * Encrypt the plaintext region of an skb in-place.
+ * Uses the buffer API (not SG) because sg_init_one crashes when the
+ * skb data spans a 4KB page boundary — virt_to_page returns the wrong
+ * page for the second half. The buffer API handles this internally.
+ */
 int wg_encrypt_skb(struct sk_buff *skb, u32 plaintext_off, u32 plaintext_len,
 		   u64 nonce, const u8 key[32]);
 int wg_encrypt_skb(struct sk_buff *skb, u32 plaintext_off, u32 plaintext_len,
 		   u64 nonce, const u8 key[32])
 {
-	struct scatterlist sg;
+	u8 *pt = skb->data + plaintext_off;
 
-	/* Build SG over the plaintext + tag region of the skb.
-	 * The skb was pre-allocated with room for the tag by
-	 * wg_skb_prepend_header, so no cow needed. */
-	sg_init_one(&sg, skb->data + plaintext_off,
-		    plaintext_len + CHACHA20POLY1305_AUTHTAG_SIZE);
-
-	if (!chacha20poly1305_encrypt_sg_inplace(&sg, plaintext_len,
-						  NULL, 0, nonce, key))
-		return -EINVAL;
-
+	/* chacha20poly1305_encrypt writes plaintext_len + 16 bytes to dst.
+	 * With dst == src, it encrypts in-place and appends the tag. */
+	chacha20poly1305_encrypt(pt, pt, plaintext_len, NULL, 0, nonce, key);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(wg_encrypt_skb);
