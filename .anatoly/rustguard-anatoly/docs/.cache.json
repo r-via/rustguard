@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "pages": {
+    "01-Getting-Started/01-Overview.md": {},
+    "01-Getting-Started/02-Installation.md": {},
+    "01-Getting-Started/03-Configuration.md": {},
+    "01-Getting-Started/04-Quick-Start.md": {},
+    "02-Architecture/01-System-Overview.md": {},
+    "02-Architecture/02-Core-Concepts.md": {},
+    "02-Architecture/03-Data-Flow.md": {},
+    "02-Architecture/04-Design-Decisions.md": {},
+    "03-Guides/01-Common-Workflows.md": {},
+    "03-Guides/02-Advanced-Configuration.md": {},
+    "03-Guides/03-Troubleshooting.md": {},
+    "04-API-Reference/01-Public-API.md": {},
+    "04-API-Reference/02-Configuration-Schema.md": {},
+    "04-API-Reference/03-Types-and-Interfaces.md": {},
+    "05-Development/01-Source-Tree.md": {},
+    "05-Development/02-Build-and-Test.md": {},
+    "05-Development/03-Code-Conventions.md": {},
+    "05-Development/04-Release-Process.md": {}
+  }
+}

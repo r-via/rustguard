@@ -1,0 +1,283 @@
+{
+  "version": 2,
+  "file": "rustguard-crypto/src/blake2s.rs",
+  "is_generated": false,
+  "language": "rust",
+  "parse_method": "ast",
+  "verdict": "NEEDS_REFACTOR",
+  "symbols": [
+    {
+      "name": "BLAKE2S_BLOCK_SIZE",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 6,
+      "line_end": 6,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "GOOD",
+      "documentation": "DOCUMENTED",
+      "confidence": 88,
+      "detail": "[USED] Non-exported constant used 5 times in hmac_blake2s function (lines 72, 77, 79, 84, 86) for block-size array initialization and loop bounds. | [UNIQUE] Standard cryptographic constant for BLAKE2s-256 block size. No similar constants found in RAG results or codebase. | [OK] BLAKE2s uses a 512-bit (64-byte) block size, which is the correct value to use when constructing HMAC with BLAKE2s as the underlying hash per RFC 2104. | [LEAN] Named constant replacing the magic number 64 in a crypto context — essential for readability and correctness in the HMAC padding logic below. Exactly the right abstraction level. | [GOOD] Pure private constant (value 64). No runtime behaviour to test directly. Indirectly exercised by every hmac_blake2s call in the embedded test suite — the padded-key and ipad/opad arrays are sized by this constant, so any wrong value would break determinism tests. | [UNDOCUMENTED] Private constant with no `///` doc comment. As a private item with a self-explanatory name and value, this is tolerable, but a brief note explaining why 64 bytes (BLAKE2s block size per spec) would improve clarity. (deliberated: reclassified: documentation: UNDOCUMENTED → DOCUMENTED — Documentation UNDOCUMENTED reclassified to DOCUMENTED. This is a private constant named BLAKE2S_BLOCK_SIZE with value 64 — the name is self-documenting for anyone with basic cryptographic knowledge. The original evaluator even acknowledged it is 'tolerable.' For a private constant whose name IS the specification reference, requiring a doc comment is excessive.)"
+    },
+    {
+      "name": "hash",
+      "kind": "function",
+      "exported": true,
+      "line_start": 9,
+      "line_end": 15,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "WEAK",
+      "documentation": "PARTIAL",
+      "confidence": 92,
+      "detail": "[DEAD] Exported function. Pre-computed analysis shows 0 runtime importers and 0 type-only importers. Used only within module tests; no external consumption detected. | [UNIQUE] High similarity (0.856, 0.849) with kernel module implementations, but fundamentally different. blake2s.rs is pure Rust library using Blake2s256::new(). Kernel versions (rustguard-kmod) use FFI wrappers (wg_blake2s_hash). Different compilation targets and type systems; architecturally distinct. | [OK] Standard unkeyed BLAKE2s-256 over multiple chunks. Iterating chunks and calling update is semantically equivalent to concatenating them, and finalize().into() correctly converts GenericArray<u8, U32> to [u8; 32]. No correctness issues. | [LEAN] Accepts &[&[u8]] for zero-copy multi-chunk hashing — idiomatic in Rust crypto code and directly validated by the hash_multi_chunk test. No unnecessary layers. | [WEAK] Three embedded tests cover determinism (hash_deterministic), input-sensitivity (hash_different_inputs), and multi-chunk equivalence (hash_multi_chunk). However, no test validates output against a known BLAKE2s-256 reference vector, so a subtly wrong implementation (e.g., wrong digest size or initialisation) would pass all tests. Empty-slice input is also untested. | [PARTIAL] Has a one-line `///` doc comment ('BLAKE2s-256 hash.') but is otherwise bare. Missing: parameter description for the `data` slice-of-slices argument, return value description, and a required `# Examples` section for a public API function. (deliberated: reclassified: utility: DEAD → USED, tests: NONE → WEAK, documentation: UNDOCUMENTED → PARTIAL — Utility DEAD is a false positive: this is a library crate's public API. Exported functions in a crypto library ARE the product — absence of in-workspace importers does not make them dead. The crate is designed to be consumed externally (rustguard-crypto). Tests NONE contradicts the detail text which describes three existing tests (hash_deterministic, hash_different_inputs, hash_multi_chunk); reclassified to WEAK since tests exist but lack reference vectors. Documentation UNDOCUMENTED contradicts the detail and source: line 8 has `/// BLAKE2s-256 hash.` — it's PARTIAL (brief but present, missing params/examples).)"
+    },
+    {
+      "name": "mac",
+      "kind": "function",
+      "exported": true,
+      "line_start": 21,
+      "line_end": 29,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "WEAK",
+      "documentation": "PARTIAL",
+      "confidence": 91,
+      "detail": "[DEAD] Exported function. Pre-computed analysis shows 0 runtime importers and 0 type-only importers. Used only within module tests; no external consumption detected. | [UNIQUE] High similarity (0.930, 0.915) with kernel versions, but different semantic contracts. blake2s.rs takes data: &[&[u8]] (slice of slices), kernel versions take data: &[u8] (single slice). Different implementations: blake2s uses Blake2sMac keyed mode; kernel uses FFI. Different compilation targets preclude substitutability. | [OK] Uses BLAKE2s built-in keying mode via Blake2sMac<U32>. new_from_slice accepts 1–32 byte keys; the panic message is slightly imprecise about the minimum (omits '>= 1') but that is a documentation concern, not a runtime bug for valid WireGuard usage. result.into_bytes().into() correctly converts GenericArray<u8, U32> to [u8; 32]. | [LEAN] Thin wrapper over Blake2sMac with multi-chunk input. The explicit CtOutput binding is a minor verbosity imposed by the type system, not a design choice. Function is minimal and purposeful. | [WEAK] Only one direct test (mac_differs_with_key) plus indirect coverage via hmac_differs_from_keyed_blake2s. Missing: determinism check, multi-chunk behaviour, empty-data, and—critically—no known-good test vector against a BLAKE2s-MAC reference value. A wrong keying or output truncation would not be caught. | [PARTIAL] Has a multi-line `///` block with a useful purpose description and an important design note distinguishing keyed BLAKE2s from HMAC. However, neither the `key` nor `data` parameters are documented, the return value is not described, and there is no `# Examples` section expected for a public function. (deliberated: reclassified: utility: DEAD → USED, tests: NONE → WEAK, documentation: UNDOCUMENTED → PARTIAL — Utility DEAD is a false positive for the same library-crate reason as hash. Tests NONE contradicts the detail text which describes mac_differs_with_key and indirect coverage via hmac_differs_from_keyed_blake2s; reclassified to WEAK (tests exist but no reference vectors). Documentation UNDOCUMENTED contradicts the source: lines 17-20 have a multi-line /// block explaining keyed MAC vs HMAC distinction. Reclassified to PARTIAL per the detail's own assessment.)"
+    },
+    {
+      "name": "hkdf",
+      "kind": "function",
+      "exported": true,
+      "line_start": 37,
+      "line_end": 57,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "WEAK",
+      "documentation": "PARTIAL",
+      "confidence": 92,
+      "detail": "[DEAD] Exported function. Pre-computed analysis shows 0 runtime importers and 0 type-only importers. Used only within module tests; no external consumption detected. | [UNIQUE] High similarity (0.911) with kernel module hkdf, same signature, but fundamentally different implementations. blake2s.rs is full Rust implementation with explicit HKDF extract-expand using hmac_blake2s. Kernel version uses FFI wrapper (wg_hkdf). Different compilation targets (userspace library vs kernel module). | [OK] Extract step is HMAC(key=key, msg=input) producing PRK, then expand steps correctly implement RFC 5869 with empty info: T1=HMAC(PRK,0x01), T2=HMAC(PRK,T1||0x02), T3=HMAC(PRK,T2||0x03). This matches the WireGuard noise protocol HKDF exactly. | [LEAN] Direct, faithful implementation of WireGuard's 3-output HKDF. Returning a fixed triple is appropriate because the WireGuard spec defines exactly three expansion outputs. No abstraction layers are added beyond what the protocol requires. | [WEAK] Two tests cover output distinctness (T1 ≠ T2 ≠ T3) and determinism. However, there are no test vectors derived from the WireGuard specification or any reference implementation, so a bug in the expansion step ordering or HMAC invocation would pass. Different-input differentiation and empty-input edge cases are also absent. For a KDF used in a cryptographic protocol, spec-level test vectors are essential. | [PARTIAL] Has a multi-line `///` block with a description of the algorithm, a note about always using BLAKE2s, and a return-value summary ('callers use what they need'). Missing: explicit `key` and `input` parameter descriptions, and a `# Examples` section. The return note is informal rather than structured. (deliberated: reclassified: utility: DEAD → USED, tests: NONE → WEAK, documentation: UNDOCUMENTED → PARTIAL — Utility DEAD is a false positive: hkdf is a core public function of a crypto library crate, essential for the WireGuard KDF. Tests NONE contradicts the detail which describes two tests (hkdf_produces_different_outputs, hkdf_deterministic); reclassified to WEAK since no RFC 5869/WireGuard spec test vectors are present. Documentation UNDOCUMENTED contradicts source: lines 31-36 have a substantial /// block describing the algorithm and return semantics. Reclassified to PARTIAL.)"
+    },
+    {
+      "name": "hmac_blake2s",
+      "kind": "function",
+      "exported": false,
+      "line_start": 64,
+      "line_end": 88,
+      "correction": "OK",
+      "overengineering": "ACCEPTABLE",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "WEAK",
+      "documentation": "PARTIAL",
+      "confidence": 85,
+      "detail": "[USED] Non-exported function. Called 4 times in hkdf (lines 48, 51, 56, 61) and 3 times in tests (lines 116, 121, 124). Critical to HKDF expansion logic. | [UNIQUE] All similar functions score below 0.82 threshold (0.728, 0.723, 0.717). Implements RFC 2104 standard HMAC-BLAKE2s construction. Intentionally different from mac() in same file, which uses BLAKE2s built-in keyed mode. Code documentation explicitly distinguishes these as separate algorithms. | [OK] Correct RFC 2104 HMAC construction: key (32 bytes) is zero-padded to block size (64 bytes) since 32 < 64 so no key hashing is needed. ipad = padded_key XOR 0x36..., opad = padded_key XOR 0x5c... are computed correctly. Inner hash = H(ipad || data) and outer hash = H(opad || inner_hash) are both correct. Blake2s256::new() creates an unkeyed hasher, which is required for HMAC. No correctness issues. | [ACCEPTABLE] Hand-rolled HMAC per RFC 2104. The RustCrypto `hmac` crate (>10M weekly downloads) is already in the same ecosystem as the `blake2` dep and would provide `Hmac<Blake2s256>` with less risk of subtle implementation error. Since `hmac` does not appear to be installed, this is ACCEPTABLE, but adding it would reduce the crypto surface area. If `hmac` is already a transitive dep, this becomes a mild NIH case (OVER). | [WEAK] Two tests exist: hmac_differs_from_keyed_blake2s (verifies HMAC ≠ keyed-BLAKE2s mode) and hmac_test_vector (despite the name, only checks determinism and key-sensitivity — it carries no known-correct HMAC output). No test validates against an RFC 2104 reference vector computed with BLAKE2s. The ipad/opad XOR logic and key-padding are critical correctness points that are entirely unverified against ground truth. | [PARTIAL] Private function with a meaningful `///` block that includes the HMAC formula notation, an RFC 2104 reference, and a critical design distinction from keyed BLAKE2s. For a private function this is solid; however, the key parameter is typed as `&[u8; 32]` while the doc refers to it only in the formula, and no param/return annotations are present. Confidence reduced slightly due to private-item leniency. (deliberated: confirmed — All three findings are correct and coherent. Tests WEAK: two tests exist but no RFC 2104 reference vector validates the ipad/opad XOR logic — critical gap for a hand-rolled HMAC. Documentation PARTIAL: the /// block is solid for a private function (includes formula and RFC reference) but lacks param annotations. Overengineering ACCEPTABLE: hand-rolled HMAC is justified if the hmac crate isn't a dependency, though using it would reduce crypto surface area. Confidence raised from 70 to 85 as assessment is well-supported.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": 2,
+      "description": "Add JSDoc documentation for exported symbol: `hash`",
+      "severity": "medium",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "hash",
+      "target_lines": "L9-L15"
+    },
+    {
+      "id": 4,
+      "description": "Add JSDoc documentation for exported symbol: `mac`",
+      "severity": "medium",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "mac",
+      "target_lines": "L21-L29"
+    },
+    {
+      "id": 6,
+      "description": "Add JSDoc documentation for exported symbol: `hkdf`",
+      "severity": "medium",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "hkdf",
+      "target_lines": "L37-L57"
+    },
+    {
+      "id": 7,
+      "description": "Complete JSDoc documentation for: `hmac_blake2s`",
+      "severity": "low",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "hmac_blake2s",
+      "target_lines": "L64-L88"
+    }
+  ],
+  "file_level": {
+    "unused_imports": [],
+    "circular_dependencies": [],
+    "general_notes": "Best practices score: 8.5/10 (0 FAIL, 2 WARN, 10 PASS)"
+  },
+  "best_practices": {
+    "score": 8.5,
+    "rules": [
+      {
+        "rule_id": 1,
+        "rule_name": "No unwrap in production code",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No .unwrap() calls found anywhere in the file. The single .expect() in mac() is the explicitly recommended alternative per this rule."
+      },
+      {
+        "rule_id": 2,
+        "rule_name": "No unsafe blocks without justification comment",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No unsafe blocks present in the file."
+      },
+      {
+        "rule_id": 3,
+        "rule_name": "Proper error handling with Result/Option",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "No silent error ignores found. The .expect() in mac() is explicit rather than silent. All outputs are returned by value with no ignored Results."
+      },
+      {
+        "rule_id": 4,
+        "rule_name": "Derive common traits on public types",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "No public struct or enum types are defined in this file — only free functions and a private constant — so this rule does not apply."
+      },
+      {
+        "rule_id": 5,
+        "rule_name": "Lifetime annotations explicit where needed",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "All lifetime elisions are standard and idiomatic: &[u8], &[&[u8]], and &[u8; 32] parameters follow normal Rust lifetime elision rules. No unnecessary elisions or cases requiring explicit annotations."
+      },
+      {
+        "rule_id": 6,
+        "rule_name": "Use clippy idioms",
+        "status": "WARN",
+        "severity": "MEDIUM",
+        "detail": "hmac_blake2s contains two manual indexed for-loops (lines 70-73 and 78-81) to XOR key pads. Clippy would flag these in favour of iterator zip chains, which are more idiomatic, avoid index bounds checks, and are easier to read.",
+        "lines": "L70-L73, L78-L81"
+      },
+      {
+        "rule_id": 7,
+        "rule_name": "No panic in library/production code",
+        "status": "WARN",
+        "severity": "CRITICAL",
+        "detail": "rustguard-crypto is a library crate (has lib.rs). The public function mac() calls .expect(\"BLAKE2s-MAC key must be <= 32 bytes\") at line 23, which panics if the caller supplies a key longer than 32 bytes. This exposes callers to an unrecoverable panic without any way to handle the error. The function should return Result<[u8; 32], Blake2sError> and propagate the error instead.",
+        "lines": "L22-L24"
+      },
+      {
+        "rule_id": 8,
+        "rule_name": "Module organization",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "File is correctly placed in rustguard-crypto/src/blake2s.rs, consistent with the project's per-crate module convention. Public symbols are expected to be re-exported via rustguard-crypto/src/lib.rs (not shown but present in project structure)."
+      },
+      {
+        "rule_id": 9,
+        "rule_name": "Documentation comments on public items",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "All three public functions (hash, mac, hkdf) have descriptive /// doc comments explaining their purpose, algorithm choice, and relationship to the WireGuard spec. The private hmac_blake2s also has a doc comment. No public items are undocumented."
+      },
+      {
+        "rule_id": 10,
+        "rule_name": "No hardcoded secrets or credentials",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "The constants 0x36 and 0x5c are standard HMAC ipad/opad values from RFC 2104, not secrets. Test vectors ([0x42u8; 32], [0x01; 32]) appear only inside #[cfg(test)] and are not credentials."
+      },
+      {
+        "rule_id": 11,
+        "rule_name": "Memory safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "No use of mem::forget, ManuallyDrop, or custom Drop implementations. No raw pointers or Box::from_raw. All heap allocation is handled through safe standard types from the blake2 crate. Stack buffers (padded_key, ipad, opad) are fixed-size arrays with deterministic lifetimes."
+      },
+      {
+        "rule_id": 12,
+        "rule_name": "Concurrency safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "All three public functions are stateless and pure — they take immutable inputs and return owned values. No shared mutable state, Mutex, Arc, or interior mutability patterns are present. These functions are trivially Send + Sync by construction."
+      }
+    ],
+    "suggestions": [
+      {
+        "description": "Make mac() panic-safe for library use by returning Result instead of calling .expect(). This eliminates the silent panic footgun for callers who pass oversized keys.",
+        "before": "pub fn mac(key: &[u8], data: &[&[u8]]) -> [u8; 32] {\n    let mut m = Blake2sMac::<U32>::new_from_slice(key)\n        .expect(\"BLAKE2s-MAC key must be <= 32 bytes\");\n    ...\n    result.into_bytes().into()\n}",
+        "after": "pub fn mac(key: &[u8], data: &[&[u8]]) -> Result<[u8; 32], blake2::digest::InvalidLength> {\n    let mut m = Blake2sMac::<U32>::new_from_slice(key)?;\n    for chunk in data {\n        m.update(chunk);\n    }\n    let result: CtOutput<Blake2sMac<U32>> = m.finalize();\n    Ok(result.into_bytes().into())\n}"
+      },
+      {
+        "description": "Replace manual indexed XOR loops in hmac_blake2s with idiomatic iterator zip chains to satisfy clippy::needless_range_loop and improve readability.",
+        "before": "let mut ipad = [0x36u8; BLAKE2S_BLOCK_SIZE];\nfor i in 0..BLAKE2S_BLOCK_SIZE {\n    ipad[i] ^= padded_key[i];\n}\n// ...\nlet mut opad = [0x5cu8; BLAKE2S_BLOCK_SIZE];\nfor i in 0..BLAKE2S_BLOCK_SIZE {\n    opad[i] ^= padded_key[i];\n}",
+        "after": "let mut ipad = [0x36u8; BLAKE2S_BLOCK_SIZE];\nipad.iter_mut().zip(padded_key.iter()).for_each(|(a, b)| *a ^= b);\n// ...\nlet mut opad = [0x5cu8; BLAKE2S_BLOCK_SIZE];\nopad.iter_mut().zip(padded_key.iter()).for_each(|(a, b)| *a ^= b);"
+      }
+    ]
+  },
+  "docs_coverage": {
+    "concepts": [],
+    "score_pct": 35
+  },
+  "axis_meta": {
+    "utility": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.030182300000000002,
+      "duration_ms": 34304
+    },
+    "duplication": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.06535585,
+      "duration_ms": 68685
+    },
+    "correction": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.19051,
+      "duration_ms": 83719
+    },
+    "overengineering": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.0764505,
+      "duration_ms": 33145
+    },
+    "tests": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.12297725000000001,
+      "duration_ms": 56022
+    },
+    "best_practices": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.15909625,
+      "duration_ms": 79302
+    },
+    "documentation": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.10331374999999998,
+      "duration_ms": 47140
+    }
+  },
+  "deliberation": {
+    "verdict_before": "NEEDS_REFACTOR",
+    "verdict_after": "NEEDS_REFACTOR",
+    "reclassified": 4,
+    "actions_removed": 3,
+    "reasoning": "The three DEAD utility findings (actions 1, 3, 5) are false positives. This is a library crate (rustguard-crypto) whose exported functions constitute its public API — absence of in-workspace importers is expected and does not indicate dead code. Similarly, all three UNDOCUMENTED assessments for exported functions contradicted both the detail text and the source code, which clearly shows /// doc comments on every public function; reclassified to PARTIAL. The NONE test ratings also contradicted the detail text which described existing tests for each function; reclassified to WEAK. The remaining legitimate concerns are: (1) weak test coverage across all functions — no cryptographic reference vectors for BLAKE2s hash, MAC, HMAC, or HKDF, which is a real gap for security-critical code; (2) panic via .expect() in the public mac() function; (3) non-idiomatic indexed loops in hmac_blake2s. These justify NEEDS_REFACTOR but not CRITICAL."
+  }
+}

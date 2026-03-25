@@ -1,0 +1,16 @@
+[
+  {
+    "id": "FIX-041",
+    "actId": "ACT-050448-4",
+    "title": "Fix: Remove dead code: `KEEPALIVE_TIMEOUT_NS` is exported but unused",
+    "description": "Resolve high finding in `rustguard-kmod/src/timers.rs` (symbol: `KEEPALIVE_TIMEOUT_NS`): Remove dead code: `KEEPALIVE_TIMEOUT_NS` is exported but unused",
+    "acceptanceCriteria": [
+      "The issue described in the finding is resolved",
+      "`npm run build` succeeds",
+      "`npm test` passes"
+    ],
+    "priority": 41,
+    "passes": true,
+    "notes": "Source axis: utility"
+  }
+]

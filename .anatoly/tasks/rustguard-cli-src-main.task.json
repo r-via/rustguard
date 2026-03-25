@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "file": "rustguard-cli/src/main.rs",
+  "hash": "7fc8ab30b3f054e2948a142540d59c5e260bba3d43e70ef2f1c18f7855857f26",
+  "symbols": [
+    {
+      "name": "main",
+      "kind": "function",
+      "exported": false,
+      "line_start": 6,
+      "line_end": 28
+    },
+    {
+      "name": "usage",
+      "kind": "function",
+      "exported": false,
+      "line_start": 30,
+      "line_end": 42
+    },
+    {
+      "name": "cmd_up",
+      "kind": "function",
+      "exported": false,
+      "line_start": 44,
+      "line_end": 66
+    },
+    {
+      "name": "cmd_serve",
+      "kind": "function",
+      "exported": false,
+      "line_start": 68,
+      "line_end": 152
+    },
+    {
+      "name": "cmd_join",
+      "kind": "function",
+      "exported": false,
+      "line_start": 154,
+      "line_end": 199
+    },
+    {
+      "name": "cmd_open",
+      "kind": "function",
+      "exported": false,
+      "line_start": 201,
+      "line_end": 214
+    },
+    {
+      "name": "cmd_close",
+      "kind": "function",
+      "exported": false,
+      "line_start": 216,
+      "line_end": 224
+    },
+    {
+      "name": "cmd_status",
+      "kind": "function",
+      "exported": false,
+      "line_start": 226,
+      "line_end": 234
+    },
+    {
+      "name": "cmd_genkey",
+      "kind": "function",
+      "exported": false,
+      "line_start": 236,
+      "line_end": 240
+    },
+    {
+      "name": "cmd_pubkey",
+      "kind": "function",
+      "exported": false,
+      "line_start": 242,
+      "line_end": 255
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

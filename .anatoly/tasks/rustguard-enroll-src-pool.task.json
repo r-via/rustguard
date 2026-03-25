@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "file": "rustguard-enroll/src/pool.rs",
+  "hash": "499027cb772d5b86892358178ad71738d6d38c443aa17f3356b56bdb4b9c8454",
+  "symbols": [
+    {
+      "name": "IpPool",
+      "kind": "class",
+      "exported": true,
+      "line_start": 9,
+      "line_end": 20
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

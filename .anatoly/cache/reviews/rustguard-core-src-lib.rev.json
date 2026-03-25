@@ -1,0 +1,153 @@
+{
+  "version": 2,
+  "file": "rustguard-core/src/lib.rs",
+  "is_generated": false,
+  "language": "rust",
+  "parse_method": "ast",
+  "verdict": "CLEAN",
+  "symbols": [],
+  "actions": [],
+  "file_level": {
+    "unused_imports": [],
+    "circular_dependencies": [],
+    "general_notes": "Best practices score: 9.5/10 (0 FAIL, 1 WARN, 11 PASS)"
+  },
+  "best_practices": {
+    "score": 9.5,
+    "rules": [
+      {
+        "rule_id": 1,
+        "rule_name": "No unwrap in production code",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No `.unwrap()` calls present anywhere in this file."
+      },
+      {
+        "rule_id": 2,
+        "rule_name": "No unsafe blocks without justification comment",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No `unsafe` blocks present in this file."
+      },
+      {
+        "rule_id": 3,
+        "rule_name": "Proper error handling with Result/Option",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "No functions are defined in this lib root, so no error-handling surface exists here."
+      },
+      {
+        "rule_id": 4,
+        "rule_name": "Derive common traits on public types",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "No types are declared in this file; trait derivations are not applicable."
+      },
+      {
+        "rule_id": 5,
+        "rule_name": "Lifetime annotations explicit where needed",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "No functions or types with lifetime parameters are present in this file."
+      },
+      {
+        "rule_id": 6,
+        "rule_name": "Use clippy idioms",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "No clippy-relevant patterns (manual loops, unnecessary clones, etc.) exist in this declaration-only file."
+      },
+      {
+        "rule_id": 7,
+        "rule_name": "No panic! in library/production code",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No `panic!` macros present. This is a library crate root with only module declarations."
+      },
+      {
+        "rule_id": 8,
+        "rule_name": "Module organization",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "Module hierarchy is clean and logical: six domain-specific public modules (cookie, handshake, messages, replay, session, timers) are properly declared with `pub mod`, and `rustguard_crypto` is cleanly re-exported as `crypto` via `pub use`. The `no_std` conditional attribute and explicit `extern crate alloc` are idiomatic for a portable library crate."
+      },
+      {
+        "rule_id": 9,
+        "rule_name": "Documentation comments on public items",
+        "status": "WARN",
+        "severity": "MEDIUM",
+        "detail": "None of the six public module declarations or the `pub use rustguard_crypto as crypto` re-export have `///` documentation comments. As the public API entry point for the crate, each public item should carry at least a one-line summary to aid users of the library.",
+        "lines": "L5-L11"
+      },
+      {
+        "rule_id": 10,
+        "rule_name": "No hardcoded secrets or credentials",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No secrets, keys, tokens, or credentials present in this file."
+      },
+      {
+        "rule_id": 11,
+        "rule_name": "Memory safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "No `mem::forget`, raw pointer manipulation, or `Drop` implementations in this file. The `no_std` + `alloc` pattern is correctly applied for heap usage without the standard library."
+      },
+      {
+        "rule_id": 12,
+        "rule_name": "Concurrency safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "No concurrency primitives, shared state, or thread-related constructs are introduced in this file. `Send`/`Sync` bounds are not applicable at this layer."
+      }
+    ],
+    "suggestions": [
+      {
+        "description": "Add `///` doc comments to each public module declaration and the crypto re-export so that `cargo doc` generates meaningful API documentation for library consumers.",
+        "before": "pub mod cookie;\npub mod handshake;\npub mod messages;\npub mod replay;\npub mod session;\npub mod timers;\n\npub use rustguard_crypto as crypto;",
+        "after": "/// Cookie reply and MAC computation utilities.\npub mod cookie;\n\n/// Noise protocol handshake state machine.\npub mod handshake;\n\n/// Wire-format message types and serialization.\npub mod messages;\n\n/// Anti-replay sliding-window counter.\npub mod replay;\n\n/// Established session key material and state.\npub mod session;\n\n/// Keepalive and expiry timer logic.\npub mod timers;\n\n/// Re-exported cryptographic primitives (AEAD, X25519, BLAKE2s, TAI64N).\npub use rustguard_crypto as crypto;"
+      }
+    ]
+  },
+  "docs_coverage": {
+    "concepts": [],
+    "score_pct": 0
+  },
+  "axis_meta": {
+    "utility": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.0169808,
+      "duration_ms": 22342
+    },
+    "duplication": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.0060231,
+      "duration_ms": 5698
+    },
+    "correction": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.0149025,
+      "duration_ms": 1897
+    },
+    "overengineering": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.0183255,
+      "duration_ms": 1948
+    },
+    "tests": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.017994749999999997,
+      "duration_ms": 4092
+    },
+    "best_practices": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.0708025,
+      "duration_ms": 32638
+    },
+    "documentation": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.05209375,
+      "duration_ms": 19724
+    }
+  }
+}

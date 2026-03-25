@@ -1,0 +1,192 @@
+{
+  "version": 1,
+  "file": "rustguard-tun/src/xdp.rs",
+  "hash": "953721d0e185dd55849104fa9aaf394d7943377fc1eafe958b854ed96e4cda34",
+  "symbols": [
+    {
+      "name": "AF_XDP",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 20,
+      "line_end": 20
+    },
+    {
+      "name": "SOL_XDP",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 21,
+      "line_end": 21
+    },
+    {
+      "name": "XDP_UMEM_REG",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 23,
+      "line_end": 23
+    },
+    {
+      "name": "XDP_UMEM_FILL_RING",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 24,
+      "line_end": 24
+    },
+    {
+      "name": "XDP_UMEM_COMPLETION_RING",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 25,
+      "line_end": 25
+    },
+    {
+      "name": "XDP_RX_RING",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 26,
+      "line_end": 26
+    },
+    {
+      "name": "XDP_TX_RING",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 27,
+      "line_end": 27
+    },
+    {
+      "name": "XDP_MMAP_OFFSETS",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 28,
+      "line_end": 28
+    },
+    {
+      "name": "XDP_PGOFF_RX_RING",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 30,
+      "line_end": 30
+    },
+    {
+      "name": "XDP_PGOFF_TX_RING",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 31,
+      "line_end": 31
+    },
+    {
+      "name": "XDP_UMEM_PGOFF_FILL_RING",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 32,
+      "line_end": 32
+    },
+    {
+      "name": "XDP_UMEM_PGOFF_COMPLETION_RING",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 33,
+      "line_end": 33
+    },
+    {
+      "name": "XDP_USE_NEED_WAKEUP",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 35,
+      "line_end": 35
+    },
+    {
+      "name": "XDP_RING_NEED_WAKEUP",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 36,
+      "line_end": 36
+    },
+    {
+      "name": "XdpUmemReg",
+      "kind": "class",
+      "exported": false,
+      "line_start": 41,
+      "line_end": 48
+    },
+    {
+      "name": "SockaddrXdp",
+      "kind": "class",
+      "exported": false,
+      "line_start": 52,
+      "line_end": 58
+    },
+    {
+      "name": "XdpDesc",
+      "kind": "class",
+      "exported": true,
+      "line_start": 62,
+      "line_end": 66
+    },
+    {
+      "name": "XdpRingOffset",
+      "kind": "class",
+      "exported": false,
+      "line_start": 70,
+      "line_end": 75
+    },
+    {
+      "name": "XdpMmapOffsets",
+      "kind": "class",
+      "exported": false,
+      "line_start": 79,
+      "line_end": 84
+    },
+    {
+      "name": "Ring",
+      "kind": "class",
+      "exported": false,
+      "line_start": 89,
+      "line_end": 95
+    },
+    {
+      "name": "XdpConfig",
+      "kind": "class",
+      "exported": true,
+      "line_start": 126,
+      "line_end": 132
+    },
+    {
+      "name": "XdpSocket",
+      "kind": "class",
+      "exported": true,
+      "line_start": 148,
+      "line_end": 160
+    },
+    {
+      "name": "setsockopt_raw",
+      "kind": "function",
+      "exported": false,
+      "line_start": 407,
+      "line_end": 415
+    },
+    {
+      "name": "mmap_ring",
+      "kind": "function",
+      "exported": false,
+      "line_start": 417,
+      "line_end": 437
+    },
+    {
+      "name": "make_ring",
+      "kind": "function",
+      "exported": false,
+      "line_start": 439,
+      "line_end": 447
+    },
+    {
+      "name": "if_nametoindex",
+      "kind": "function",
+      "exported": true,
+      "line_start": 449,
+      "line_end": 458
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

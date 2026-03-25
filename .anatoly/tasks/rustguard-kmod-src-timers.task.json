@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "file": "rustguard-kmod/src/timers.rs",
+  "hash": "c110d8b7cf84d49a1df5e856f71ba56d36caf9bcdbb7a9e4bf3be5b8c74faf14",
+  "symbols": [
+    {
+      "name": "REKEY_AFTER_TIME_NS",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 12,
+      "line_end": 12
+    },
+    {
+      "name": "REJECT_AFTER_TIME_NS",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 14,
+      "line_end": 14
+    },
+    {
+      "name": "REKEY_TIMEOUT_NS",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 16,
+      "line_end": 16
+    },
+    {
+      "name": "REKEY_ATTEMPT_TIME_NS",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 18,
+      "line_end": 18
+    },
+    {
+      "name": "KEEPALIVE_TIMEOUT_NS",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 20,
+      "line_end": 20
+    },
+    {
+      "name": "DEAD_SESSION_TIMEOUT_NS",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 22,
+      "line_end": 22
+    },
+    {
+      "name": "REKEY_AFTER_MESSAGES",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 25,
+      "line_end": 25
+    },
+    {
+      "name": "REJECT_AFTER_MESSAGES",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 27,
+      "line_end": 27
+    },
+    {
+      "name": "now_ns",
+      "kind": "function",
+      "exported": false,
+      "line_start": 33,
+      "line_end": 35
+    },
+    {
+      "name": "SessionTimers",
+      "kind": "class",
+      "exported": true,
+      "line_start": 38,
+      "line_end": 51
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

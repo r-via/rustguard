@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "file": "rustguard-core/src/cookie.rs",
+  "hash": "c2b90a1b84a311a66fca464f0746dd2121c72dca84a99456795f232692673e49",
+  "symbols": [
+    {
+      "name": "COOKIE_SECRET_LIFETIME",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 21,
+      "line_end": 21
+    },
+    {
+      "name": "COOKIE_LEN",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 24,
+      "line_end": 24
+    },
+    {
+      "name": "now",
+      "kind": "function",
+      "exported": false,
+      "line_start": 33,
+      "line_end": 35
+    },
+    {
+      "name": "elapsed_since",
+      "kind": "function",
+      "exported": false,
+      "line_start": 38,
+      "line_end": 40
+    },
+    {
+      "name": "elapsed_since",
+      "kind": "function",
+      "exported": false,
+      "line_start": 43,
+      "line_end": 45
+    },
+    {
+      "name": "CookieChecker",
+      "kind": "class",
+      "exported": true,
+      "line_start": 48,
+      "line_end": 57
+    },
+    {
+      "name": "CookieState",
+      "kind": "class",
+      "exported": true,
+      "line_start": 60,
+      "line_end": 65
+    },
+    {
+      "name": "encode_addr",
+      "kind": "function",
+      "exported": false,
+      "line_start": 227,
+      "line_end": 243
+    },
+    {
+      "name": "random_bytes",
+      "kind": "function",
+      "exported": false,
+      "line_start": 245,
+      "line_end": 249
+    },
+    {
+      "name": "random_nonce",
+      "kind": "function",
+      "exported": false,
+      "line_start": 251,
+      "line_end": 255
+    },
+    {
+      "name": "fill_random",
+      "kind": "function",
+      "exported": false,
+      "line_start": 261,
+      "line_end": 263
+    },
+    {
+      "name": "fill_random",
+      "kind": "function",
+      "exported": false,
+      "line_start": 266,
+      "line_end": 271
+    },
+    {
+      "name": "constant_time_eq_16",
+      "kind": "function",
+      "exported": false,
+      "line_start": 273,
+      "line_end": 279
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

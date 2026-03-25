@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "file": "rustguard-core/src/handshake.rs",
+  "hash": "2b3e05179b1897dc686806cf88d18d66b91c38572ab8fd892b5099676080a6ce",
+  "symbols": [
+    {
+      "name": "initial_chain_key",
+      "kind": "function",
+      "exported": false,
+      "line_start": 23,
+      "line_end": 25
+    },
+    {
+      "name": "initial_hash",
+      "kind": "function",
+      "exported": false,
+      "line_start": 27,
+      "line_end": 29
+    },
+    {
+      "name": "mix_hash",
+      "kind": "function",
+      "exported": false,
+      "line_start": 32,
+      "line_end": 34
+    },
+    {
+      "name": "mix_key",
+      "kind": "function",
+      "exported": false,
+      "line_start": 38,
+      "line_end": 41
+    },
+    {
+      "name": "encrypt_and_hash",
+      "kind": "function",
+      "exported": false,
+      "line_start": 44,
+      "line_end": 48
+    },
+    {
+      "name": "decrypt_and_hash",
+      "kind": "function",
+      "exported": false,
+      "line_start": 51,
+      "line_end": 55
+    },
+    {
+      "name": "compute_mac1",
+      "kind": "function",
+      "exported": true,
+      "line_start": 59,
+      "line_end": 65
+    },
+    {
+      "name": "InitiatorHandshake",
+      "kind": "class",
+      "exported": true,
+      "line_start": 72,
+      "line_end": 81
+    },
+    {
+      "name": "create_initiation",
+      "kind": "function",
+      "exported": true,
+      "line_start": 85,
+      "line_end": 91
+    },
+    {
+      "name": "create_initiation_psk",
+      "kind": "function",
+      "exported": true,
+      "line_start": 95,
+      "line_end": 104
+    },
+    {
+      "name": "create_initiation_with",
+      "kind": "function",
+      "exported": true,
+      "line_start": 108,
+      "line_end": 170
+    },
+    {
+      "name": "process_response",
+      "kind": "function",
+      "exported": true,
+      "line_start": 173,
+      "line_end": 221
+    },
+    {
+      "name": "process_initiation",
+      "kind": "function",
+      "exported": true,
+      "line_start": 227,
+      "line_end": 233
+    },
+    {
+      "name": "process_initiation_psk",
+      "kind": "function",
+      "exported": true,
+      "line_start": 237,
+      "line_end": 246
+    },
+    {
+      "name": "process_initiation_with",
+      "kind": "function",
+      "exported": true,
+      "line_start": 249,
+      "line_end": 357
+    },
+    {
+      "name": "constant_time_eq",
+      "kind": "function",
+      "exported": false,
+      "line_start": 360,
+      "line_end": 363
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

@@ -1,0 +1,188 @@
+{
+  "version": 2,
+  "file": "rustguard-core/src/session.rs",
+  "is_generated": false,
+  "language": "rust",
+  "parse_method": "ast",
+  "verdict": "NEEDS_REFACTOR",
+  "symbols": [
+    {
+      "name": "TransportSession",
+      "kind": "class",
+      "exported": true,
+      "line_start": 13,
+      "line_end": 30,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "WEAK",
+      "documentation": "DOCUMENTED",
+      "confidence": 90,
+      "detail": "[DEAD] Exported struct with 0 runtime importers and 0 type-only importers across all files. Pre-computed analysis confirms no external modules import this symbol. | [UNIQUE] No RAG similarity data available; no matching duplicates detected in codebase for this cryptographic transport session struct. | [OK] The struct definition is correct. Fields are properly typed: keys are [u8; 32], counters are u64, and the replay window is a dedicated type. Zeroize/ZeroizeOnDrop are correctly applied to the key fields while index and counter fields are skipped (acceptable — they contain no secret material). No logic errors, type mismatches, or unsafe operations are present in the struct definition itself. | [LEAN] The struct holds exactly the fields mandated by WireGuard-style transport: two session indices for packet routing, a send key, a receive key, an outgoing nonce counter, and an anti-replay window. Nothing extraneous. The selective `#[zeroize(skip)]` annotations are correctly applied only to non-secret fields (indices, counter, replay window), showing disciplined, purposeful use of the derive macros rather than cargo-cult application. No unnecessary generics, no abstraction layers, no configuration indirection — just the minimal state a bidirectional AEAD transport session requires. | [WEAK] Inline #[cfg(test)] module provides solid coverage of the core API: encrypt/decrypt roundtrip, counter monotonicity, wrong-counter rejection, anti-replay window, out-of-order delivery, and bidirectional use. However, the two zero-alloc variants — encrypt_to and decrypt_in_place — have zero test coverage despite being public API surface. Nonce exhaustion (send_counter wrapping via checked_add returning None) is also untested. Empty plaintext and truncated/corrupted ciphertext edge cases are absent. The missing coverage of encrypt_to/decrypt_in_place is the most significant gap since those paths exercise a separate code branch (crypto::seal_to / crypto::open_to) that could silently misbehave. | [DOCUMENTED] The struct carries a meaningful type-level `///` block (lines 7–11) that explains its purpose, derivation from a completed handshake, and the initiator/responder key-role convention. Both public fields (`our_index`, `their_index`) have individual `///` comments describing their semantics in the context of the WireGuard index scheme. All private fields also carry `///` comments, which is above the minimum bar. No `# Examples` section is present, but the Rust doc-comment convention only requires that on public functions and methods, not on struct declarations, so this omission does not reduce the rating below DOCUMENTED. (deliberated: reclassified: utility: DEAD → USED, tests: NONE → WEAK, documentation: UNDOCUMENTED → DOCUMENTED — UTILITY DEAD→USED: This is a `pub struct` in a `-core` library crate (`rustguard-core`). Library crate public types are consumed by downstream crates in the workspace (e.g., `rustguard`). The utility evaluator likely only searched within the same crate and missed cross-crate imports, a classic false positive for workspace library crates. Reclassified to USED. TESTS NONE→WEAK: The merged field says NONE but the detail text itself says WEAK, and the source clearly contains 6 test functions in a `#[cfg(test)]` module covering encrypt/decrypt roundtrip, counter monotonicity, wrong-counter rejection, replay rejection, out-of-order delivery, and bidirectional use. The WEAK assessment is accurate: `encrypt_to` and `decrypt_in_place` (separate code paths using `seal_to`/`open_to`) have zero coverage, and nonce exhaustion / edge cases are untested. DOCUMENTATION UNDOCUMENTED→DOCUMENTED: The detail text itself concludes DOCUMENTED. The struct has a thorough `///` block (lines 7–11) explaining purpose, derivation, and key-role convention. Both public fields and all private fields carry `///` comments. Four of six methods have doc comments. Two public items (`new`, `send_counter`) lack doc comments (noted in best_practices rule 9), but the overall coverage is well above UNDOCUMENTED. The struct-level and field-level documentation is comprehensive.)"
+    }
+  ],
+  "actions": [],
+  "file_level": {
+    "unused_imports": [],
+    "circular_dependencies": [],
+    "general_notes": "Best practices score: 9/10 (0 FAIL, 2 WARN, 10 PASS)"
+  },
+  "best_practices": {
+    "score": 9,
+    "rules": [
+      {
+        "rule_id": 1,
+        "rule_name": "No unwrap in production code",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "All `.unwrap()` calls are confined to the `#[cfg(test)]` module. Production methods (`encrypt`, `decrypt`, `encrypt_to`, `decrypt_in_place`) return `Option<T>` and propagate failure cleanly via `?` or early `None` returns. Rule 1 is always PASS for test modules per policy.",
+        "lines": "L107-L178"
+      },
+      {
+        "rule_id": 2,
+        "rule_name": "No unsafe blocks without justification",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No `unsafe` blocks appear anywhere in the file."
+      },
+      {
+        "rule_id": 3,
+        "rule_name": "Proper error handling with Result/Option",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "`checked_add(1)?` guards the nonce counter against overflow; `crypto::open` is chained with `?` so a failed AEAD tag never produces a plaintext value silently. The replay-window update is correctly deferred until after successful decryption, preventing window-poisoning attacks. No silent ignores found."
+      },
+      {
+        "rule_id": 4,
+        "rule_name": "Derive common traits on public types",
+        "status": "WARN",
+        "severity": "MEDIUM",
+        "detail": "`TransportSession` is a public struct that derives only `Zeroize` and `ZeroizeOnDrop`. `Debug`, `Clone`, and `PartialEq` are absent. Omitting `Clone` and `PartialEq` is defensible for a stateful cryptographic session — cloning would duplicate mutable counters and replay windows with shared state semantics. However, a custom `Debug` impl that redacts key material (printing `[REDACTED]` for `key_send`/`key_recv`) would aid debuggability without leaking secrets.",
+        "lines": "L11-L12"
+      },
+      {
+        "rule_id": 5,
+        "rule_name": "Lifetime annotations explicit where needed",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "All method signatures use simple single-reference parameters (`&[u8]`, `&mut [u8]`). Lifetime elision is unambiguous in every case; explicit annotations would add noise without clarity."
+      },
+      {
+        "rule_id": 6,
+        "rule_name": "Clippy idioms",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "No unnecessary `clone()` calls, no manual loops where iterator chains would be cleaner, and counter arithmetic uses `checked_add` rather than a bare `+` — all idiomatic Rust."
+      },
+      {
+        "rule_id": 7,
+        "rule_name": "No panic! in library/production code",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No `panic!`, `todo!`, `unreachable!`, or `unimplemented!` macros appear in production paths. Test assertions use standard `assert_eq!`/`assert!` which is acceptable per policy."
+      },
+      {
+        "rule_id": 8,
+        "rule_name": "Module organization",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "`session.rs` sits correctly alongside `replay.rs`, `handshake.rs`, and `messages.rs` inside `rustguard-core/src/`, consistent with the project's flat-module layout for the core crate. Internal use of `crate::replay::ReplayWindow` follows the established intra-crate path convention."
+      },
+      {
+        "rule_id": 9,
+        "rule_name": "Documentation comments on public items",
+        "status": "WARN",
+        "severity": "MEDIUM",
+        "detail": "The struct and four of its methods carry `///` doc comments. However, `TransportSession::new` and `TransportSession::send_counter` are both `pub` and lack doc comments entirely.",
+        "lines": "L35-L46, L93-L95"
+      },
+      {
+        "rule_id": 10,
+        "rule_name": "No hardcoded secrets or credentials",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "The only literal key bytes (`[0x11u8; 32]`, `[0x22u8; 32]`) appear exclusively inside `#[cfg(test)]` and are clearly synthetic test vectors with no production relevance."
+      },
+      {
+        "rule_id": 11,
+        "rule_name": "Memory safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "`#[derive(Zeroize, ZeroizeOnDrop)]` ensures `key_send` and `key_recv` are overwritten with zeros when the session is dropped, preventing key material from lingering in heap/stack memory. No `mem::forget`, `Box::leak`, or manual `Drop` anti-patterns are present."
+      },
+      {
+        "rule_id": 12,
+        "rule_name": "Concurrency safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "All mutating methods (`encrypt`, `decrypt`, `encrypt_to`, `decrypt_in_place`) require `&mut self`, so Rust's borrow checker statically prevents concurrent mutable access without a synchronisation primitive. The struct contains only `u64`, `u32`, `[u8; 32]` arrays, and `ReplayWindow`; assuming `ReplayWindow` is `Send`, the struct auto-derives `Send` correctly. No raw pointer tricks or interior mutability patterns that could escape the borrow checker are present."
+      }
+    ],
+    "suggestions": [
+      {
+        "description": "Add a redacting `Debug` impl for `TransportSession` to aid diagnostics without exposing key material.",
+        "before": "#[derive(Zeroize, ZeroizeOnDrop)]\npub struct TransportSession { ... }",
+        "after": "#[derive(Zeroize, ZeroizeOnDrop)]\npub struct TransportSession { ... }\n\nimpl core::fmt::Debug for TransportSession {\n    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {\n        f.debug_struct(\"TransportSession\")\n            .field(\"our_index\", &self.our_index)\n            .field(\"their_index\", &self.their_index)\n            .field(\"key_send\", &\"[REDACTED]\")\n            .field(\"key_recv\", &\"[REDACTED]\")\n            .field(\"send_counter\", &self.send_counter)\n            .finish()\n    }\n}"
+      },
+      {
+        "description": "Add `///` doc comments to the two undocumented public items: `new` and `send_counter`.",
+        "before": "pub fn new(\n    our_index: u32,\n    their_index: u32,\n    key_send: [u8; 32],\n    key_recv: [u8; 32],\n) -> Self {",
+        "after": "/// Creates a new `TransportSession` from the keys and index pair\n/// produced by a completed handshake.\npub fn new(\n    our_index: u32,\n    their_index: u32,\n    key_send: [u8; 32],\n    key_recv: [u8; 32],\n) -> Self {"
+      },
+      {
+        "description": "Document `send_counter` to clarify its semantics (next nonce value, not packets sent).",
+        "before": "pub fn send_counter(&self) -> u64 {\n    self.send_counter\n}",
+        "after": "/// Returns the next outgoing nonce counter value.\n/// When this reaches `u64::MAX` the session must be rekeyed.\npub fn send_counter(&self) -> u64 {\n    self.send_counter\n}"
+      }
+    ]
+  },
+  "docs_coverage": {
+    "concepts": [],
+    "score_pct": 90
+  },
+  "axis_meta": {
+    "utility": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.01785205,
+      "duration_ms": 18437
+    },
+    "duplication": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.01476685,
+      "duration_ms": 16114
+    },
+    "correction": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.03104625,
+      "duration_ms": 5194
+    },
+    "overengineering": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.06741925,
+      "duration_ms": 25697
+    },
+    "tests": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.0579885,
+      "duration_ms": 20486
+    },
+    "best_practices": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.12498375,
+      "duration_ms": 60897
+    },
+    "documentation": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.0709375,
+      "duration_ms": 30308
+    }
+  },
+  "deliberation": {
+    "verdict_before": "NEEDS_REFACTOR",
+    "verdict_after": "NEEDS_REFACTOR",
+    "reclassified": 1,
+    "actions_removed": 2,
+    "reasoning": "The primary reclassification is DEAD→USED: `TransportSession` is a public struct in a library crate (`rustguard-core`) clearly designed for consumption by other crates in the workspace. Flagging it as dead code is a false positive from intra-crate-only import analysis. Action 1 (remove dead code) is removed accordingly. Documentation was incorrectly marked UNDOCUMENTED despite the detail text confirming DOCUMENTED status and thorough `///` comments on the struct, fields, and most methods. Action 2 (add JSDoc — wrong terminology for Rust) is removed since the symbol is documented; the minor gap of two undocumented public methods is captured in best_practices suggestions. Tests were marked NONE but the file contains 6 substantive tests; reclassified to WEAK due to missing coverage of `encrypt_to`, `decrypt_in_place`, and nonce exhaustion edge cases. This is the remaining legitimate finding. Verdict stays NEEDS_REFACTOR based on the WEAK test coverage of public API surface."
+  }
+}

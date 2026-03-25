@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "file": "rustguard-daemon/src/peer.rs",
+  "hash": "a7958d053a27700bcd9208eec441ea4dab67d314f7f0db88f8770f88a0a6636a",
+  "symbols": [
+    {
+      "name": "Peer",
+      "kind": "class",
+      "exported": true,
+      "line_start": 16,
+      "line_end": 26
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

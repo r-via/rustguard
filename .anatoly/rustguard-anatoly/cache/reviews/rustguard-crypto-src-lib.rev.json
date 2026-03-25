@@ -1,0 +1,77 @@
+{
+  "version": 2,
+  "file": "rustguard-crypto/src/lib.rs",
+  "is_generated": true,
+  "skip_reason": "constants-only",
+  "language": "rust",
+  "parse_method": "ast",
+  "verdict": "CLEAN",
+  "symbols": [
+    {
+      "name": "CONSTRUCTION",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 16,
+      "line_end": 16,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "-",
+      "documentation": "-",
+      "confidence": 100,
+      "detail": "Trivial file — auto-skipped by triage (constants-only)"
+    },
+    {
+      "name": "IDENTIFIER",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 17,
+      "line_end": 17,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "-",
+      "documentation": "-",
+      "confidence": 100,
+      "detail": "Trivial file — auto-skipped by triage (constants-only)"
+    },
+    {
+      "name": "LABEL_MAC1",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 18,
+      "line_end": 18,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "-",
+      "documentation": "-",
+      "confidence": 100,
+      "detail": "Trivial file — auto-skipped by triage (constants-only)"
+    },
+    {
+      "name": "LABEL_COOKIE",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 19,
+      "line_end": 19,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "-",
+      "documentation": "-",
+      "confidence": 100,
+      "detail": "Trivial file — auto-skipped by triage (constants-only)"
+    }
+  ],
+  "actions": [],
+  "file_level": {
+    "unused_imports": [],
+    "circular_dependencies": [],
+    "general_notes": ""
+  }
+}

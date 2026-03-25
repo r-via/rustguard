@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "file": "rustguard-tun/src/lib.rs",
+  "hash": "4bd39ee41c39301910e808537687dd4ed6372e73a46b4efad784339fe9cb709e",
+  "symbols": [
+    {
+      "name": "Tun",
+      "kind": "class",
+      "exported": true,
+      "line_start": 25,
+      "line_end": 30
+    },
+    {
+      "name": "TunConfig",
+      "kind": "class",
+      "exported": true,
+      "line_start": 33,
+      "line_end": 44
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

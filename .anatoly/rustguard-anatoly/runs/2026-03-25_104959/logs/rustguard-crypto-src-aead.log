@@ -1,0 +1,3899 @@
+# Axis: utility
+
+## User
+
+## File: `rustguard-crypto/src/aead.rs`
+## Language: rust
+
+```rust
+use alloc::vec::Vec;
+use chacha20poly1305::{
+    aead::{Aead, AeadInPlace, KeyInit, Payload},
+    ChaCha20Poly1305, Nonce, XChaCha20Poly1305, XNonce,
+};
+
+pub const AEAD_TAG_LEN: usize = 16;
+
+/// Maximum WireGuard transport payload (MTU 1420 + tag).
+pub const MAX_PACKET_SIZE: usize = 1500 + AEAD_TAG_LEN;
+
+/// Encrypt plaintext with ChaCha20-Poly1305.
+///
+/// WireGuard uses a 64-bit counter as nonce (padded to 96 bits with 4 zero bytes).
+/// AAD is additional authenticated data (empty for transport, used in handshake).
+pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .encrypt(
+            &nonce,
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .expect("encryption failed")
+}
+
+/// Decrypt ciphertext with ChaCha20-Poly1305.
+///
+/// Returns None if authentication fails (wrong key, tampered data, wrong nonce).
+pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .decrypt(
+            &nonce,
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .ok()
+}
+
+/// Encrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie encryption.
+pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .encrypt(xnonce, Payload { msg: plaintext, aad })
+        .expect("xchacha encryption failed")
+}
+
+/// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .decrypt(xnonce, Payload { msg: ciphertext, aad })
+        .ok()
+}
+
+/// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+/// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+/// Zero allocations.
+pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let len = plaintext.len();
+    buf[..len].copy_from_slice(plaintext);
+    let tag = cipher
+        .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+        .expect("encryption failed");
+    buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+    len + AEAD_TAG_LEN
+}
+
+/// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+/// buf contains ciphertext + tag on input, plaintext on output.
+/// Zero allocations.
+pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+    if ct_len < AEAD_TAG_LEN {
+        return None;
+    }
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let pt_len = ct_len - AEAD_TAG_LEN;
+    let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+    let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+    cipher
+        .decrypt_in_place_detached(&nonce, &[], data, tag)
+        .ok()?;
+    Some(pt_len)
+}
+
+/// WireGuard nonce: 4 bytes of zeros || 8 bytes little-endian counter.
+fn build_nonce(counter: u64) -> Nonce {
+    let mut nonce = [0u8; 12];
+    nonce[4..].copy_from_slice(&counter.to_le_bytes());
+    Nonce::from(nonce)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seal_then_open() {
+        let key = [0x42u8; 32];
+        let plaintext = b"wireguard is elegant";
+        let aad = b"";
+
+        let ciphertext = seal(&key, 0, aad, plaintext);
+        assert_eq!(ciphertext.len(), plaintext.len() + AEAD_TAG_LEN);
+
+        let decrypted = open(&key, 0, aad, &ciphertext).expect("decryption failed");
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn wrong_key_fails() {
+        let key = [0x42u8; 32];
+        let wrong_key = [0x43u8; 32];
+
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&wrong_key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&key, 1, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn tampered_ciphertext_fails() {
+        let key = [0x42u8; 32];
+        let mut ciphertext = seal(&key, 0, b"", b"secret");
+        ciphertext[0] ^= 0xff;
+        assert!(open(&key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn aad_mismatch_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"correct", b"secret");
+        assert!(open(&key, 0, b"wrong", &ciphertext).is_none());
+    }
+}
+
+```
+
+## Symbols to evaluate
+
+- export constant AEAD_TAG_LEN (L7–L7)
+- export constant MAX_PACKET_SIZE (L10–L10)
+- export function seal (L16–L28)
+- export function open (L33–L45)
+- export function xseal (L48–L54)
+- export function xopen (L57–L63)
+- export function seal_to (L68–L78)
+- export function open_to (L83–L96)
+- function build_nonce (L99–L103)
+
+## Pre-computed Import Analysis
+
+- AEAD_TAG_LEN (exported): imported by 0 files — LIKELY DEAD
+- MAX_PACKET_SIZE (exported): imported by 0 files — LIKELY DEAD
+- seal (exported): imported by 0 files — LIKELY DEAD
+- open (exported): imported by 0 files — LIKELY DEAD
+- xseal (exported): imported by 0 files — LIKELY DEAD
+- xopen (exported): imported by 0 files — LIKELY DEAD
+- seal_to (exported): imported by 0 files — LIKELY DEAD
+- open_to (exported): imported by 0 files — LIKELY DEAD
+- build_nonce (not exported): internal only — check local usage in file
+
+Evaluate the utility of each symbol and output the JSON.
+## Known False Positives (previously overturned by deliberation)
+
+The following findings were previously flagged by this axis but overturned during deliberation review. Do not re-flag them unless you have new evidence that the situation has changed.
+
+- **[deliberation] TransportSession: utility DEAD → USED**: Deliberation reclassified: UTILITY DEAD→USED: This is a `pub struct` in a `-core` library crate (`rustguard-core`). Library crate public types are consumed by downstream crates in the workspace (e.g., `rustguard`). The utility evaluator likely only searched within the same crate and missed cross-crate imports, a classic false positive for workspace library crates. Reclassified to USED. TESTS NONE→WEAK: The merged field says NONE but the detail text itself says WEAK, and the source clearly contains 6 test functions in a `#[cfg(test)]` module covering encrypt/decrypt roundtrip, counter monotonicity, wrong-counter rejection, replay rejection, out-of-order delivery, and bidirectional use. The WEAK assessment is accurate: `encrypt_to` and `decrypt_in_place` (separate code paths using `seal_to`/`open_to`) have zero coverage, and nonce exhaustion / edge cases are untested. DOCUMENTATION UNDOCUMENTED→DOCUMENTED: The detail text itself concludes DOCUMENTED. The struct has a thorough `///` block (lines 7–11) explaining purpose, derivation, and key-role convention. Both public fields and all private fields carry `///` comments. Four of six methods have doc comments. Two public items (`new`, `send_counter`) lack doc comments (noted in best_practices rule 9), but the overall coverage is well above UNDOCUMENTED. The struct-level and field-level documentation is comprehensive.
+- **[deliberation] COOKIE_LEN: utility DEAD → USED**: Deliberation reclassified: Utility DEAD reclassified → USED: this is a `pub const` in a library crate (`rustguard-core`). Downstream crates (e.g., message layout code) depend on it; pre-computed analysis likely doesn't capture cross-crate workspace imports. The entire cookie module is clearly used infrastructure for a WireGuard implementation. Tests NONE contradicts the detail text which says '[GOOD] Pure constant. Used throughout and indirectly validated in every roundtrip test.' For a pure constant with no runtime behavior, indirect validation is sufficient — reclassified to GOOD. Documentation UNDOCUMENTED is wrong — line 23 has `/// Cookie size.` which IS a doc comment, making this PARTIAL (brief but present).
+- **[deliberation] CookieChecker: utility DEAD → USED**: Deliberation reclassified: Utility DEAD reclassified → USED: CookieChecker is the primary server-side public API of this module in a library crate. Pre-computed cross-crate analysis likely misses workspace-level imports. The entire module exists to support WireGuard cookie DoS protection — this struct is clearly intended for use by consuming crates. Tests NONE contradicts the detail text which says 'happy-path methods (create_reply, verify_mac2) are reasonably well tested across four tests' — reclassified to WEAK (tested but with gaps in verify_mac1, rotation, new_with). Documentation UNDOCUMENTED contradicts detail: 'Struct has a /// summary and all four fields have field-level /// comments.' Line 49 has a doc comment. Reclassified to PARTIAL (docs exist but missing examples and constructor docs).
+- **[deliberation] CookieState: utility DEAD → USED**: Deliberation reclassified: Correction NEEDS_FIX kept: unlike elapsed_since, the consequence here is that process_reply successfully decrypts a cookie but never marks it as fresh, making compute_mac2 silently return zeros on no_std. While the overall no_std design is intentional, this specific behavior is more insidious — a successful decryption followed by silent failure to use the cookie is a subtle trap with no comment explaining it. Utility DEAD → USED: same reasoning as CookieChecker — primary client-side public API in a library crate. Tests NONE → WEAK: detail says 'Happy path covered: process_reply success, wrong-MAC1 failure, compute_mac2 with/without cookie.' Documentation UNDOCUMENTED → PARTIAL: detail says 'Struct has a /// summary and both private fields have doc comments.'
+
+
+## System (init)
+
+**Model:** claude-haiku-4-5-20251001
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+```json
+{
+  "symbols": [
+    {
+      "name": "AEAD_TAG_LEN",
+      "line_start": 7,
+      "line_end": 7,
+      "utility": "DEAD",
+      "confidence": 95,
+      "detail": "Exported constant with 0 runtime/type-only importers. Public API constant in library crate (rustguard-crypto); pattern matches Known False Positives (COOKIE_LEN case). Likely consumed by downstream crates."
+    },
+    {
+      "name": "MAX_PACKET_SIZE",
+      "line_start": 10,
+      "line_end": 10,
+      "utility": "DEAD",
+      "confidence": 95,
+      "detail": "Exported constant with 0 runtime/type-only importers. Public API constant in crypto library crate; no internal usage. Likely false positive for library public export."
+    },
+    {
+      "name": "seal",
+      "line_start": 16,
+      "line_end": 28,
+      "utility": "DEAD",
+      "confidence": 95,
+      "detail": "Exported core AEAD encryption function with 0 runtime/type-only importers. Primary public API of rustguard-crypto library; likely consumed by downstream crates. Pattern matches Known False Positives."
+    },
+    {
+      "name": "open",
+      "line_start": 33,
+      "line_end": 45,
+      "utility": "DEAD",
+      "confidence": 95,
+      "detail": "Exported core AEAD decryption function with 0 runtime/type-only importers. Primary public API of rustguard-crypto library; likely consumed by downstream crates. Pattern matches Known False Positives."
+    },
+    {
+      "name": "xseal",
+      "line_start": 48,
+      "line_end": 54,
+      "utility": "DEAD",
+      "confidence": 95,
+      "detail": "Exported extended-nonce encryption function with 0 runtime/type-only importers. Public API variant in library crate; no local usage. Likely false positive."
+    },
+    {
+      "name": "xopen",
+      "line_start": 57,
+      "line_end": 63,
+      "utility": "DEAD",
+      "confidence": 95,
+      "detail": "Exported extended-nonce decryption function with 0 runtime/type-only importers. Public API variant in library crate; no local usage. Likely false positive."
+    },
+    {
+      "name": "seal_to",
+      "line_start": 68,
+      "line_end": 78,
+      "utility": "DEAD",
+      "confidence": 95,
+      "detail": "Exported in-place encryption function with 0 runtime/type-only importers. Zero-allocation API variant in crypto library; no local usage. Likely false positive."
+    },
+    {
+      "name": "open_to",
+      "line_start": 83,
+      "line_end": 96,
+      "utility": "DEAD",
+      "confidence": 95,
+      "detail": "Exported in-place decryption function with 0 runtime/type-only importers. Zero-allocation API variant in crypto library; no local usage. Likely false positive."
+    },
+    {
+      "name": "build_nonce",
+      "line_start": 99,
+      "line_end": 103,
+      "utility": "USED",
+      "confidence": 95,
+      "detail": "Non-exported private function called 4 times locally: seal (L22), open (L39), seal_to (L73), open_to (L86). Required helper for WireGuard nonce construction."
+    }
+  ]
+}
+```
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0359 | **Duration:** 37.2s
+
+
+---
+
+# Axis: duplication
+
+## User
+
+## File: `rustguard-crypto/src/aead.rs`
+## Language: rust
+
+```rust
+use alloc::vec::Vec;
+use chacha20poly1305::{
+    aead::{Aead, AeadInPlace, KeyInit, Payload},
+    ChaCha20Poly1305, Nonce, XChaCha20Poly1305, XNonce,
+};
+
+pub const AEAD_TAG_LEN: usize = 16;
+
+/// Maximum WireGuard transport payload (MTU 1420 + tag).
+pub const MAX_PACKET_SIZE: usize = 1500 + AEAD_TAG_LEN;
+
+/// Encrypt plaintext with ChaCha20-Poly1305.
+///
+/// WireGuard uses a 64-bit counter as nonce (padded to 96 bits with 4 zero bytes).
+/// AAD is additional authenticated data (empty for transport, used in handshake).
+pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .encrypt(
+            &nonce,
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .expect("encryption failed")
+}
+
+/// Decrypt ciphertext with ChaCha20-Poly1305.
+///
+/// Returns None if authentication fails (wrong key, tampered data, wrong nonce).
+pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .decrypt(
+            &nonce,
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .ok()
+}
+
+/// Encrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie encryption.
+pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .encrypt(xnonce, Payload { msg: plaintext, aad })
+        .expect("xchacha encryption failed")
+}
+
+/// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .decrypt(xnonce, Payload { msg: ciphertext, aad })
+        .ok()
+}
+
+/// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+/// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+/// Zero allocations.
+pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let len = plaintext.len();
+    buf[..len].copy_from_slice(plaintext);
+    let tag = cipher
+        .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+        .expect("encryption failed");
+    buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+    len + AEAD_TAG_LEN
+}
+
+/// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+/// buf contains ciphertext + tag on input, plaintext on output.
+/// Zero allocations.
+pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+    if ct_len < AEAD_TAG_LEN {
+        return None;
+    }
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let pt_len = ct_len - AEAD_TAG_LEN;
+    let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+    let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+    cipher
+        .decrypt_in_place_detached(&nonce, &[], data, tag)
+        .ok()?;
+    Some(pt_len)
+}
+
+/// WireGuard nonce: 4 bytes of zeros || 8 bytes little-endian counter.
+fn build_nonce(counter: u64) -> Nonce {
+    let mut nonce = [0u8; 12];
+    nonce[4..].copy_from_slice(&counter.to_le_bytes());
+    Nonce::from(nonce)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seal_then_open() {
+        let key = [0x42u8; 32];
+        let plaintext = b"wireguard is elegant";
+        let aad = b"";
+
+        let ciphertext = seal(&key, 0, aad, plaintext);
+        assert_eq!(ciphertext.len(), plaintext.len() + AEAD_TAG_LEN);
+
+        let decrypted = open(&key, 0, aad, &ciphertext).expect("decryption failed");
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn wrong_key_fails() {
+        let key = [0x42u8; 32];
+        let wrong_key = [0x43u8; 32];
+
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&wrong_key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&key, 1, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn tampered_ciphertext_fails() {
+        let key = [0x42u8; 32];
+        let mut ciphertext = seal(&key, 0, b"", b"secret");
+        ciphertext[0] ^= 0xff;
+        assert!(open(&key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn aad_mismatch_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"correct", b"secret");
+        assert!(open(&key, 0, b"wrong", &ciphertext).is_none());
+    }
+}
+
+```
+
+## Symbols to evaluate
+
+- export constant AEAD_TAG_LEN (L7–L7)
+- export constant MAX_PACKET_SIZE (L10–L10)
+- export function seal (L16–L28)
+- export function open (L33–L45)
+- export function xseal (L48–L54)
+- export function xopen (L57–L63)
+- export function seal_to (L68–L78)
+- export function open_to (L83–L96)
+- function build_nonce (L99–L103)
+
+## RAG — Semantic Duplication
+
+### seal (L16–L28)
+Similar functions found:
+- **seal** in `rustguard-kmod/src/noise.rs` (score: 0.872)
+  Signature: fn seal(key: &[u8; 32], counter: u64, ad: &[u8], plaintext: &[u8], dst: &mut [u8]) -> Option<usize> {
+  Complexity: 1/5
+  Source:
+  ```rust
+  fn seal(key: &[u8; 32], counter: u64, ad: &[u8], plaintext: &[u8], dst: &mut [u8]) -> Option<usize> {
+      let ret = unsafe {
+          wg_chacha20poly1305_encrypt(
+              key.as_ptr(), counter,
+              plaintext.as_ptr(), plaintext.len() as u32,
+              ad.as_ptr(), ad.len() as u32,
+              dst.as_mut_ptr(),
+          )
+      };
+      if ret == 0 {
+          Some(plaintext.len() + AEAD_TAG_SIZE)
+      } else {
+          None
+      }
+  }
+  
+  /// AEAD decrypt. Returns plaintext length or None on auth failure.
+  fn open(key: &[u8; 32], counter: u64, ad: &[u8], ciphertext: &[u8], dst: &mut [u8]) -> Option<usize> {
+      let ret = unsafe {
+          wg_chacha20poly1305_decrypt(
+              key.as_ptr(), counter,
+              ciphertext.as_ptr(), ciphertext.len() as u32,
+              ad.as_ptr(), ad.len() as u32,
+              dst.as_mut_ptr(),
+          )
+      };
+      if ret == 0 {
+          Some(ciphertext.len() - AEAD_TAG_SIZE)
+      } else {
+          None
+      }
+  }
+  
+  /// Curve25519 DH.
+  fn dh(secret: &[u8; 32], public: &[u8; 32]) -> Option<[u8; 32]> {
+      let mut out = [0u8; 32];
+      let ret = unsafe { wg_curve25519(out.as_mut_ptr(), secret.as_ptr(), public.as_ptr()) };
+      if ret == 0 { Some(out) } else { None }
+  }
+  
+  /// Generate ephemeral keypair.
+  fn generate_keypair() -> ([u8; 32], [u8; 32]) {
+      let mut secret = [0u8; 32];
+      let mut public = [0u8; 32];
+      unsafe {
+          wg_curve25519_generate_secret(secret.as_mut_ptr());
+          wg_curve25519_generate_public(public.as_mut_ptr(), secret.as_ptr());
+      }
+      (secret, public)
+  }
+  ```
+- **xseal** in `rustguard-crypto/src/aead.rs` (score: 0.820)
+  Signature: pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+  Complexity: 1/5
+  Source:
+  ```rust
+  pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .encrypt(xnonce, Payload { msg: plaintext, aad })
+          .expect("xchacha encryption failed")
+  }
+  
+  /// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+  pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .decrypt(xnonce, Payload { msg: ciphertext, aad })
+          .ok()
+  }
+  
+  /// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+  /// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+  /// Zero allocations.
+  pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      let len = plaintext.len();
+      buf[..len].copy_from_slice(plaintext);
+      let tag = cipher
+          .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+          .expect("encryption failed");
+      buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+      len + AEAD_TAG_LEN
+  }
+  
+  /// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+  /// buf contains ciphertext + tag on input, plaintext on output.
+  /// Zero allocations.
+  pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+      if ct_len < AEAD_TAG_LEN {
+          return None;
+      }
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      let pt_len = ct_len - AEAD_TAG_LEN;
+      let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+      let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+      cipher
+          .decrypt_in_place_detached(&nonce, &[], data, tag)
+          .ok()?;
+      Some(pt_len)
+  }
+  
+  ```
+- **seal_to** in `rustguard-crypto/src/aead.rs` (score: 0.758)
+  Signature: pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+  Complexity: 1/5
+  Calls: build_nonce
+  Source:
+  ```rust
+  pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      let len = plaintext.len();
+      buf[..len].copy_from_slice(plaintext);
+      let tag = cipher
+          .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+          .expect("encryption failed");
+      buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+      len + AEAD_TAG_LEN
+  }
+  
+  /// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+  /// buf contains ciphertext + tag on input, plaintext on output.
+  /// Zero allocations.
+  pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+      if ct_len < AEAD_TAG_LEN {
+          return None;
+      }
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      let pt_len = ct_len - AEAD_TAG_LEN;
+      let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+      let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+      cipher
+          .decrypt_in_place_detached(&nonce, &[], data, tag)
+          .ok()?;
+      Some(pt_len)
+  }
+  
+  /// WireGuard nonce: 4 bytes of zeros || 8 bytes little-endian counter.
+  fn build_nonce(counter: u64) -> Nonce {
+      let mut nonce = [0u8; 12];
+      nonce[4..].copy_from_slice(&counter.to_le_bytes());
+      Nonce::from(nonce)
+  }
+  
+  #[cfg(test)]
+  mod tests {
+      use super::*;
+  
+      #[test]
+      fn seal_then_open() {
+          let key = [0x42u8; 32];
+          let plaintext = b"wireguard is elegant";
+          let aad = b"";
+  
+          let ciphertext = seal(&key, 0, aad, plaintext);
+          assert_eq!(ciphertext.len(), plaintext.len() + AEAD_TAG_LEN);
+  
+  ```
+
+### open (L33–L45)
+Similar functions found:
+- **open** in `rustguard-kmod/src/noise.rs` (score: 0.891)
+  Signature: fn open(key: &[u8; 32], counter: u64, ad: &[u8], ciphertext: &[u8], dst: &mut [u8]) -> Option<usize> {
+  Complexity: 1/5
+  Source:
+  ```rust
+  fn open(key: &[u8; 32], counter: u64, ad: &[u8], ciphertext: &[u8], dst: &mut [u8]) -> Option<usize> {
+      let ret = unsafe {
+          wg_chacha20poly1305_decrypt(
+              key.as_ptr(), counter,
+              ciphertext.as_ptr(), ciphertext.len() as u32,
+              ad.as_ptr(), ad.len() as u32,
+              dst.as_mut_ptr(),
+          )
+      };
+      if ret == 0 {
+          Some(ciphertext.len() - AEAD_TAG_SIZE)
+      } else {
+          None
+      }
+  }
+  
+  /// Curve25519 DH.
+  fn dh(secret: &[u8; 32], public: &[u8; 32]) -> Option<[u8; 32]> {
+      let mut out = [0u8; 32];
+      let ret = unsafe { wg_curve25519(out.as_mut_ptr(), secret.as_ptr(), public.as_ptr()) };
+      if ret == 0 { Some(out) } else { None }
+  }
+  
+  /// Generate ephemeral keypair.
+  fn generate_keypair() -> ([u8; 32], [u8; 32]) {
+      let mut secret = [0u8; 32];
+      let mut public = [0u8; 32];
+      unsafe {
+          wg_curve25519_generate_secret(secret.as_mut_ptr());
+          wg_curve25519_generate_public(public.as_mut_ptr(), secret.as_ptr());
+      }
+      (secret, public)
+  }
+  
+  fn random_bytes<const N: usize>() -> [u8; N] {
+      let mut buf = [0u8; N];
+      unsafe { wg_get_random_bytes(buf.as_mut_ptr(), N as u32) };
+      buf
+  }
+  
+  // ── Noise helpers ─────────────────────────────────────────────────────
+  
+  fn initial_chain_key() -> [u8; 32] {
+      hash(&[CONSTRUCTION])
+  }
+  
+  fn initial_hash(ck: &[u8; 32]) -> [u8; 32] {
+      hash(&[ck, IDENTIFIER])
+  }
+  
+  ```
+- **xopen** in `rustguard-crypto/src/aead.rs` (score: 0.863)
+  Signature: pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+  Complexity: 1/5
+  Source:
+  ```rust
+  pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .decrypt(xnonce, Payload { msg: ciphertext, aad })
+          .ok()
+  }
+  
+  /// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+  /// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+  /// Zero allocations.
+  pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      let len = plaintext.len();
+      buf[..len].copy_from_slice(plaintext);
+      let tag = cipher
+          .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+          .expect("encryption failed");
+      buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+      len + AEAD_TAG_LEN
+  }
+  
+  /// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+  /// buf contains ciphertext + tag on input, plaintext on output.
+  /// Zero allocations.
+  pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+      if ct_len < AEAD_TAG_LEN {
+          return None;
+      }
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      let pt_len = ct_len - AEAD_TAG_LEN;
+      let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+      let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+      cipher
+          .decrypt_in_place_detached(&nonce, &[], data, tag)
+          .ok()?;
+      Some(pt_len)
+  }
+  
+  /// WireGuard nonce: 4 bytes of zeros || 8 bytes little-endian counter.
+  fn build_nonce(counter: u64) -> Nonce {
+      let mut nonce = [0u8; 12];
+      nonce[4..].copy_from_slice(&counter.to_le_bytes());
+      Nonce::from(nonce)
+  }
+  
+  #[cfg(test)]
+  mod tests {
+  ```
+- **open_to** in `rustguard-crypto/src/aead.rs` (score: 0.758)
+  Signature: pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+  Complexity: 1/5
+  Calls: build_nonce
+  Source:
+  ```rust
+  pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+      if ct_len < AEAD_TAG_LEN {
+          return None;
+      }
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      let pt_len = ct_len - AEAD_TAG_LEN;
+      let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+      let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+      cipher
+          .decrypt_in_place_detached(&nonce, &[], data, tag)
+          .ok()?;
+      Some(pt_len)
+  }
+  
+  /// WireGuard nonce: 4 bytes of zeros || 8 bytes little-endian counter.
+  fn build_nonce(counter: u64) -> Nonce {
+      let mut nonce = [0u8; 12];
+      nonce[4..].copy_from_slice(&counter.to_le_bytes());
+      Nonce::from(nonce)
+  }
+  
+  #[cfg(test)]
+  mod tests {
+      use super::*;
+  
+      #[test]
+      fn seal_then_open() {
+          let key = [0x42u8; 32];
+          let plaintext = b"wireguard is elegant";
+          let aad = b"";
+  
+          let ciphertext = seal(&key, 0, aad, plaintext);
+          assert_eq!(ciphertext.len(), plaintext.len() + AEAD_TAG_LEN);
+  
+          let decrypted = open(&key, 0, aad, &ciphertext).expect("decryption failed");
+          assert_eq!(&decrypted, plaintext);
+      }
+  
+      #[test]
+      fn wrong_key_fails() {
+          let key = [0x42u8; 32];
+          let wrong_key = [0x43u8; 32];
+  
+          let ciphertext = seal(&key, 0, b"", b"secret");
+          assert!(open(&wrong_key, 0, b"", &ciphertext).is_none());
+      }
+  
+      #[test]
+      fn wrong_counter_fails() {
+  ```
+
+### xseal (L48–L54)
+Similar functions found:
+- **seal** in `rustguard-crypto/src/aead.rs` (score: 0.820)
+  Signature: pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+  Complexity: 1/5
+  Calls: build_nonce
+  Source:
+  ```rust
+  pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      cipher
+          .encrypt(
+              &nonce,
+              Payload {
+                  msg: plaintext,
+                  aad,
+              },
+          )
+          .expect("encryption failed")
+  }
+  
+  /// Decrypt ciphertext with ChaCha20-Poly1305.
+  ///
+  /// Returns None if authentication fails (wrong key, tampered data, wrong nonce).
+  pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      cipher
+          .decrypt(
+              &nonce,
+              Payload {
+                  msg: ciphertext,
+                  aad,
+              },
+          )
+          .ok()
+  }
+  
+  /// Encrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie encryption.
+  pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .encrypt(xnonce, Payload { msg: plaintext, aad })
+          .expect("xchacha encryption failed")
+  }
+  
+  /// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+  pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .decrypt(xnonce, Payload { msg: ciphertext, aad })
+          .ok()
+  }
+  
+  /// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+  ```
+- **seal** in `rustguard-kmod/src/noise.rs` (score: 0.747)
+  Signature: fn seal(key: &[u8; 32], counter: u64, ad: &[u8], plaintext: &[u8], dst: &mut [u8]) -> Option<usize> {
+  Complexity: 1/5
+  Source:
+  ```rust
+  fn seal(key: &[u8; 32], counter: u64, ad: &[u8], plaintext: &[u8], dst: &mut [u8]) -> Option<usize> {
+      let ret = unsafe {
+          wg_chacha20poly1305_encrypt(
+              key.as_ptr(), counter,
+              plaintext.as_ptr(), plaintext.len() as u32,
+              ad.as_ptr(), ad.len() as u32,
+              dst.as_mut_ptr(),
+          )
+      };
+      if ret == 0 {
+          Some(plaintext.len() + AEAD_TAG_SIZE)
+      } else {
+          None
+      }
+  }
+  
+  /// AEAD decrypt. Returns plaintext length or None on auth failure.
+  fn open(key: &[u8; 32], counter: u64, ad: &[u8], ciphertext: &[u8], dst: &mut [u8]) -> Option<usize> {
+      let ret = unsafe {
+          wg_chacha20poly1305_decrypt(
+              key.as_ptr(), counter,
+              ciphertext.as_ptr(), ciphertext.len() as u32,
+              ad.as_ptr(), ad.len() as u32,
+              dst.as_mut_ptr(),
+          )
+      };
+      if ret == 0 {
+          Some(ciphertext.len() - AEAD_TAG_SIZE)
+      } else {
+          None
+      }
+  }
+  
+  /// Curve25519 DH.
+  fn dh(secret: &[u8; 32], public: &[u8; 32]) -> Option<[u8; 32]> {
+      let mut out = [0u8; 32];
+      let ret = unsafe { wg_curve25519(out.as_mut_ptr(), secret.as_ptr(), public.as_ptr()) };
+      if ret == 0 { Some(out) } else { None }
+  }
+  
+  /// Generate ephemeral keypair.
+  fn generate_keypair() -> ([u8; 32], [u8; 32]) {
+      let mut secret = [0u8; 32];
+      let mut public = [0u8; 32];
+      unsafe {
+          wg_curve25519_generate_secret(secret.as_mut_ptr());
+          wg_curve25519_generate_public(public.as_mut_ptr(), secret.as_ptr());
+      }
+      (secret, public)
+  }
+  ```
+- **xopen** in `rustguard-crypto/src/aead.rs` (score: 0.705)
+  Signature: pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+  Complexity: 1/5
+  Source:
+  ```rust
+  pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .decrypt(xnonce, Payload { msg: ciphertext, aad })
+          .ok()
+  }
+  
+  /// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+  /// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+  /// Zero allocations.
+  pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      let len = plaintext.len();
+      buf[..len].copy_from_slice(plaintext);
+      let tag = cipher
+          .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+          .expect("encryption failed");
+      buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+      len + AEAD_TAG_LEN
+  }
+  
+  /// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+  /// buf contains ciphertext + tag on input, plaintext on output.
+  /// Zero allocations.
+  pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+      if ct_len < AEAD_TAG_LEN {
+          return None;
+      }
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      let pt_len = ct_len - AEAD_TAG_LEN;
+      let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+      let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+      cipher
+          .decrypt_in_place_detached(&nonce, &[], data, tag)
+          .ok()?;
+      Some(pt_len)
+  }
+  
+  /// WireGuard nonce: 4 bytes of zeros || 8 bytes little-endian counter.
+  fn build_nonce(counter: u64) -> Nonce {
+      let mut nonce = [0u8; 12];
+      nonce[4..].copy_from_slice(&counter.to_le_bytes());
+      Nonce::from(nonce)
+  }
+  
+  #[cfg(test)]
+  mod tests {
+  ```
+
+### xopen (L57–L63)
+Similar functions found:
+- **open** in `rustguard-crypto/src/aead.rs` (score: 0.863)
+  Signature: pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+  Complexity: 1/5
+  Calls: build_nonce
+  Source:
+  ```rust
+  pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      cipher
+          .decrypt(
+              &nonce,
+              Payload {
+                  msg: ciphertext,
+                  aad,
+              },
+          )
+          .ok()
+  }
+  
+  /// Encrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie encryption.
+  pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .encrypt(xnonce, Payload { msg: plaintext, aad })
+          .expect("xchacha encryption failed")
+  }
+  
+  /// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+  pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .decrypt(xnonce, Payload { msg: ciphertext, aad })
+          .ok()
+  }
+  
+  /// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+  /// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+  /// Zero allocations.
+  pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      let len = plaintext.len();
+      buf[..len].copy_from_slice(plaintext);
+      let tag = cipher
+          .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+          .expect("encryption failed");
+      buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+      len + AEAD_TAG_LEN
+  }
+  
+  /// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+  /// buf contains ciphertext + tag on input, plaintext on output.
+  /// Zero allocations.
+  ```
+- **open** in `rustguard-kmod/src/noise.rs` (score: 0.793)
+  Signature: fn open(key: &[u8; 32], counter: u64, ad: &[u8], ciphertext: &[u8], dst: &mut [u8]) -> Option<usize> {
+  Complexity: 1/5
+  Source:
+  ```rust
+  fn open(key: &[u8; 32], counter: u64, ad: &[u8], ciphertext: &[u8], dst: &mut [u8]) -> Option<usize> {
+      let ret = unsafe {
+          wg_chacha20poly1305_decrypt(
+              key.as_ptr(), counter,
+              ciphertext.as_ptr(), ciphertext.len() as u32,
+              ad.as_ptr(), ad.len() as u32,
+              dst.as_mut_ptr(),
+          )
+      };
+      if ret == 0 {
+          Some(ciphertext.len() - AEAD_TAG_SIZE)
+      } else {
+          None
+      }
+  }
+  
+  /// Curve25519 DH.
+  fn dh(secret: &[u8; 32], public: &[u8; 32]) -> Option<[u8; 32]> {
+      let mut out = [0u8; 32];
+      let ret = unsafe { wg_curve25519(out.as_mut_ptr(), secret.as_ptr(), public.as_ptr()) };
+      if ret == 0 { Some(out) } else { None }
+  }
+  
+  /// Generate ephemeral keypair.
+  fn generate_keypair() -> ([u8; 32], [u8; 32]) {
+      let mut secret = [0u8; 32];
+      let mut public = [0u8; 32];
+      unsafe {
+          wg_curve25519_generate_secret(secret.as_mut_ptr());
+          wg_curve25519_generate_public(public.as_mut_ptr(), secret.as_ptr());
+      }
+      (secret, public)
+  }
+  
+  fn random_bytes<const N: usize>() -> [u8; N] {
+      let mut buf = [0u8; N];
+      unsafe { wg_get_random_bytes(buf.as_mut_ptr(), N as u32) };
+      buf
+  }
+  
+  // ── Noise helpers ─────────────────────────────────────────────────────
+  
+  fn initial_chain_key() -> [u8; 32] {
+      hash(&[CONSTRUCTION])
+  }
+  
+  fn initial_hash(ck: &[u8; 32]) -> [u8; 32] {
+      hash(&[ck, IDENTIFIER])
+  }
+  
+  ```
+- **xseal** in `rustguard-crypto/src/aead.rs` (score: 0.705)
+  Signature: pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+  Complexity: 1/5
+  Source:
+  ```rust
+  pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .encrypt(xnonce, Payload { msg: plaintext, aad })
+          .expect("xchacha encryption failed")
+  }
+  
+  /// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+  pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .decrypt(xnonce, Payload { msg: ciphertext, aad })
+          .ok()
+  }
+  
+  /// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+  /// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+  /// Zero allocations.
+  pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      let len = plaintext.len();
+      buf[..len].copy_from_slice(plaintext);
+      let tag = cipher
+          .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+          .expect("encryption failed");
+      buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+      len + AEAD_TAG_LEN
+  }
+  
+  /// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+  /// buf contains ciphertext + tag on input, plaintext on output.
+  /// Zero allocations.
+  pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+      if ct_len < AEAD_TAG_LEN {
+          return None;
+      }
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      let pt_len = ct_len - AEAD_TAG_LEN;
+      let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+      let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+      cipher
+          .decrypt_in_place_detached(&nonce, &[], data, tag)
+          .ok()?;
+      Some(pt_len)
+  }
+  
+  ```
+
+### seal_to (L68–L78)
+Similar functions found:
+- **seal** in `rustguard-kmod/src/noise.rs` (score: 0.762)
+  Signature: fn seal(key: &[u8; 32], counter: u64, ad: &[u8], plaintext: &[u8], dst: &mut [u8]) -> Option<usize> {
+  Complexity: 1/5
+  Source:
+  ```rust
+  fn seal(key: &[u8; 32], counter: u64, ad: &[u8], plaintext: &[u8], dst: &mut [u8]) -> Option<usize> {
+      let ret = unsafe {
+          wg_chacha20poly1305_encrypt(
+              key.as_ptr(), counter,
+              plaintext.as_ptr(), plaintext.len() as u32,
+              ad.as_ptr(), ad.len() as u32,
+              dst.as_mut_ptr(),
+          )
+      };
+      if ret == 0 {
+          Some(plaintext.len() + AEAD_TAG_SIZE)
+      } else {
+          None
+      }
+  }
+  
+  /// AEAD decrypt. Returns plaintext length or None on auth failure.
+  fn open(key: &[u8; 32], counter: u64, ad: &[u8], ciphertext: &[u8], dst: &mut [u8]) -> Option<usize> {
+      let ret = unsafe {
+          wg_chacha20poly1305_decrypt(
+              key.as_ptr(), counter,
+              ciphertext.as_ptr(), ciphertext.len() as u32,
+              ad.as_ptr(), ad.len() as u32,
+              dst.as_mut_ptr(),
+          )
+      };
+      if ret == 0 {
+          Some(ciphertext.len() - AEAD_TAG_SIZE)
+      } else {
+          None
+      }
+  }
+  
+  /// Curve25519 DH.
+  fn dh(secret: &[u8; 32], public: &[u8; 32]) -> Option<[u8; 32]> {
+      let mut out = [0u8; 32];
+      let ret = unsafe { wg_curve25519(out.as_mut_ptr(), secret.as_ptr(), public.as_ptr()) };
+      if ret == 0 { Some(out) } else { None }
+  }
+  
+  /// Generate ephemeral keypair.
+  fn generate_keypair() -> ([u8; 32], [u8; 32]) {
+      let mut secret = [0u8; 32];
+      let mut public = [0u8; 32];
+      unsafe {
+          wg_curve25519_generate_secret(secret.as_mut_ptr());
+          wg_curve25519_generate_public(public.as_mut_ptr(), secret.as_ptr());
+      }
+      (secret, public)
+  }
+  ```
+- **seal** in `rustguard-crypto/src/aead.rs` (score: 0.758)
+  Signature: pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+  Complexity: 1/5
+  Calls: build_nonce
+  Source:
+  ```rust
+  pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      cipher
+          .encrypt(
+              &nonce,
+              Payload {
+                  msg: plaintext,
+                  aad,
+              },
+          )
+          .expect("encryption failed")
+  }
+  
+  /// Decrypt ciphertext with ChaCha20-Poly1305.
+  ///
+  /// Returns None if authentication fails (wrong key, tampered data, wrong nonce).
+  pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      cipher
+          .decrypt(
+              &nonce,
+              Payload {
+                  msg: ciphertext,
+                  aad,
+              },
+          )
+          .ok()
+  }
+  
+  /// Encrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie encryption.
+  pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .encrypt(xnonce, Payload { msg: plaintext, aad })
+          .expect("xchacha encryption failed")
+  }
+  
+  /// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+  pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .decrypt(xnonce, Payload { msg: ciphertext, aad })
+          .ok()
+  }
+  
+  /// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+  ```
+
+### open_to (L83–L96)
+Similar functions found:
+- **open** in `rustguard-kmod/src/noise.rs` (score: 0.783)
+  Signature: fn open(key: &[u8; 32], counter: u64, ad: &[u8], ciphertext: &[u8], dst: &mut [u8]) -> Option<usize> {
+  Complexity: 1/5
+  Source:
+  ```rust
+  fn open(key: &[u8; 32], counter: u64, ad: &[u8], ciphertext: &[u8], dst: &mut [u8]) -> Option<usize> {
+      let ret = unsafe {
+          wg_chacha20poly1305_decrypt(
+              key.as_ptr(), counter,
+              ciphertext.as_ptr(), ciphertext.len() as u32,
+              ad.as_ptr(), ad.len() as u32,
+              dst.as_mut_ptr(),
+          )
+      };
+      if ret == 0 {
+          Some(ciphertext.len() - AEAD_TAG_SIZE)
+      } else {
+          None
+      }
+  }
+  
+  /// Curve25519 DH.
+  fn dh(secret: &[u8; 32], public: &[u8; 32]) -> Option<[u8; 32]> {
+      let mut out = [0u8; 32];
+      let ret = unsafe { wg_curve25519(out.as_mut_ptr(), secret.as_ptr(), public.as_ptr()) };
+      if ret == 0 { Some(out) } else { None }
+  }
+  
+  /// Generate ephemeral keypair.
+  fn generate_keypair() -> ([u8; 32], [u8; 32]) {
+      let mut secret = [0u8; 32];
+      let mut public = [0u8; 32];
+      unsafe {
+          wg_curve25519_generate_secret(secret.as_mut_ptr());
+          wg_curve25519_generate_public(public.as_mut_ptr(), secret.as_ptr());
+      }
+      (secret, public)
+  }
+  
+  fn random_bytes<const N: usize>() -> [u8; N] {
+      let mut buf = [0u8; N];
+      unsafe { wg_get_random_bytes(buf.as_mut_ptr(), N as u32) };
+      buf
+  }
+  
+  // ── Noise helpers ─────────────────────────────────────────────────────
+  
+  fn initial_chain_key() -> [u8; 32] {
+      hash(&[CONSTRUCTION])
+  }
+  
+  fn initial_hash(ck: &[u8; 32]) -> [u8; 32] {
+      hash(&[ck, IDENTIFIER])
+  }
+  
+  ```
+- **open** in `rustguard-crypto/src/aead.rs` (score: 0.758)
+  Signature: pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+  Complexity: 1/5
+  Calls: build_nonce
+  Source:
+  ```rust
+  pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      cipher
+          .decrypt(
+              &nonce,
+              Payload {
+                  msg: ciphertext,
+                  aad,
+              },
+          )
+          .ok()
+  }
+  
+  /// Encrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie encryption.
+  pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .encrypt(xnonce, Payload { msg: plaintext, aad })
+          .expect("xchacha encryption failed")
+  }
+  
+  /// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+  pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+      let cipher = XChaCha20Poly1305::new(key.into());
+      let xnonce = XNonce::from_slice(nonce);
+      cipher
+          .decrypt(xnonce, Payload { msg: ciphertext, aad })
+          .ok()
+  }
+  
+  /// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+  /// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+  /// Zero allocations.
+  pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+      let cipher = ChaCha20Poly1305::new(key.into());
+      let nonce = build_nonce(counter);
+      let len = plaintext.len();
+      buf[..len].copy_from_slice(plaintext);
+      let tag = cipher
+          .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+          .expect("encryption failed");
+      buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+      len + AEAD_TAG_LEN
+  }
+  
+  /// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+  /// buf contains ciphertext + tag on input, plaintext on output.
+  /// Zero allocations.
+  ```
+
+### build_nonce (L99–L103)
+No similar functions found. Mark UNIQUE.
+
+Evaluate the duplication of each symbol and output the JSON.
+## Known False Positives (previously overturned by deliberation)
+
+The following findings were previously flagged by this axis but overturned during deliberation review. Do not re-flag them unless you have new evidence that the situation has changed.
+
+- **[deliberation] random_nonce: duplication DUPLICATE → UNIQUE**: Deliberation reclassified: Duplication DUPLICATE reclassified → UNIQUE: the duplicate target is in `rustguard-enroll/src/protocol.rs`, a completely separate crate. These are trivial 4-line functions that fill a buffer with random bytes. Deduplicating them would require creating a shared utility crate or adding a cross-crate dependency for 4 lines of code — this would increase coupling disproportionately. Two crates independently needing to generate random nonces is normal, not a code smell. Tests WEAK and documentation UNDOCUMENTED kept.
+- **[deliberation] mix_key: duplication DUPLICATE → UNIQUE**: Deliberation reclassified: Duplication reclassified DUPLICATE → UNIQUE: rustguard-core (userspace, x25519-dalek types, SharedSecret wrapper, alloc-based) and rustguard-kmod (kernel module, raw byte arrays, C FFI) are fundamentally different compilation targets. Sharing code between a userspace Rust crate and a kernel module is architecturally infeasible — the type differences (SharedSecret vs raw bytes) reflect different abstraction layers, not accidental duplication. The parallel implementations are intentional. Tests WEAK and docs PARTIAL stand as originally assessed.
+- **[deliberation] compute_mac1: duplication DUPLICATE → UNIQUE**: Deliberation reclassified: Duplication reclassified DUPLICATE → UNIQUE for the same reason as mix_key: rustguard-core and rustguard-kmod target fundamentally different environments (userspace vs kernel). The parameter type difference (PublicKey wrapper vs raw [u8; 32]) is not superficial — it reflects different type systems mandated by the compilation target. Cross-crate deduplication into a shared dependency would force the kernel module to depend on x25519-dalek types, which is architecturally wrong. Tests WEAK valid — no known-vector test for the 16-byte output. Documentation PARTIAL correct — public function lacks #Parameters/#Returns sections.
+
+
+## System (init)
+
+**Model:** claude-haiku-4-5-20251001
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+```json
+{
+  "symbols": [
+    {
+      "name": "AEAD_TAG_LEN",
+      "line_start": 7,
+      "line_end": 7,
+      "duplication": "UNIQUE",
+      "confidence": 95,
+      "detail": "Simple constant (16). No similar constants reported by RAG.",
+      "duplicate_target": null
+    },
+    {
+      "name": "MAX_PACKET_SIZE",
+      "line_start": 10,
+      "line_end": 10,
+      "duplication": "UNIQUE",
+      "confidence": 95,
+      "detail": "Constant definition (1500 + AEAD_TAG_LEN). No duplicates found.",
+      "duplicate_target": null
+    },
+    {
+      "name": "seal",
+      "line_start": 16,
+      "line_end": 28,
+      "duplication": "UNIQUE",
+      "confidence": 85,
+      "detail": "Encrypts with ChaCha20-Poly1305, returns allocated Vec<u8>. RAG shows similarity to seal in noise.rs (0.872, kernel FFI vs library), xseal (0.820, different cipher), seal_to (0.758, different return strategy). Different semantic contracts—cannot be substituted for one another.",
+      "duplicate_target": null
+    },
+    {
+      "name": "open",
+      "line_start": 33,
+      "line_end": 45,
+      "duplication": "UNIQUE",
+      "confidence": 85,
+      "detail": "Decrypts with ChaCha20-Poly1305, returns Option<Vec<u8>>. RAG shows similarity to open in noise.rs (0.891, FFI vs library), xopen (0.863, different cipher), open_to (0.758, different return strategy). Different contracts—xopen uses XChaCha20, open_to uses mutable buffer.",
+      "duplicate_target": null
+    },
+    {
+      "name": "xseal",
+      "line_start": 48,
+      "line_end": 54,
+      "duplication": "UNIQUE",
+      "confidence": 85,
+      "detail": "Encrypts with XChaCha20-Poly1305 (24-byte nonce), returns Vec<u8>. RAG shows 0.820 similarity to seal but uses different cipher and explicit nonce parameter. Semantic contract differs—designed for cookie encryption with fixed nonce, not counter-based transport.",
+      "duplicate_target": null
+    },
+    {
+      "name": "xopen",
+      "line_start": 57,
+      "line_end": 63,
+      "duplication": "UNIQUE",
+      "confidence": 85,
+      "detail": "Decrypts with XChaCha20-Poly1305 (24-byte nonce), returns Option<Vec<u8>>. RAG shows 0.863 similarity to open and 0.793 to open in noise.rs, but uses different cipher (XChaCha20 vs ChaCha20). Semantically distinct—handles explicit 24-byte nonces, not counter-derived 12-byte nonces.",
+      "duplicate_target": null
+    },
+    {
+      "name": "seal_to",
+      "line_start": 68,
+      "line_end": 78,
+      "duplication": "UNIQUE",
+      "confidence": 80,
+      "detail": "In-place encryption: copies plaintext to buffer, encrypts, appends tag. Returns usize (total length). RAG shows 0.762/0.758 similarity to seal/kmod operations, but different contract—uses provided mutable buffer instead of allocating Vec<u8>. Zero-allocation design.",
+      "duplicate_target": null
+    },
+    {
+      "name": "open_to",
+      "line_start": 83,
+      "line_end": 96,
+      "duplication": "UNIQUE",
+      "confidence": 80,
+      "detail": "In-place decryption: validates length, decrypts in buffer, returns plaintext length. RAG shows 0.783/0.758 similarity to open variants, but different contract—takes mutable buffer instead of returning Option<Vec<u8>>. Zero-allocation design with length-based output.",
+      "duplicate_target": null
+    },
+    {
+      "name": "build_nonce",
+      "line_start": 99,
+      "line_end": 103,
+      "duplication": "UNIQUE",
+      "confidence": 95,
+      "detail": "Helper: constructs WireGuard nonce (4 zero bytes || 8-byte LE counter). No similar functions reported by RAG. Private utility with specific WireGuard nonce format.",
+      "duplicate_target": null
+    }
+  ]
+}
+```
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0489 | **Duration:** 41.2s
+
+
+---
+
+# Axis: correction
+
+## User
+
+## File: `rustguard-crypto/src/aead.rs`
+## Language: rust
+
+```rust
+use alloc::vec::Vec;
+use chacha20poly1305::{
+    aead::{Aead, AeadInPlace, KeyInit, Payload},
+    ChaCha20Poly1305, Nonce, XChaCha20Poly1305, XNonce,
+};
+
+pub const AEAD_TAG_LEN: usize = 16;
+
+/// Maximum WireGuard transport payload (MTU 1420 + tag).
+pub const MAX_PACKET_SIZE: usize = 1500 + AEAD_TAG_LEN;
+
+/// Encrypt plaintext with ChaCha20-Poly1305.
+///
+/// WireGuard uses a 64-bit counter as nonce (padded to 96 bits with 4 zero bytes).
+/// AAD is additional authenticated data (empty for transport, used in handshake).
+pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .encrypt(
+            &nonce,
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .expect("encryption failed")
+}
+
+/// Decrypt ciphertext with ChaCha20-Poly1305.
+///
+/// Returns None if authentication fails (wrong key, tampered data, wrong nonce).
+pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .decrypt(
+            &nonce,
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .ok()
+}
+
+/// Encrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie encryption.
+pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .encrypt(xnonce, Payload { msg: plaintext, aad })
+        .expect("xchacha encryption failed")
+}
+
+/// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .decrypt(xnonce, Payload { msg: ciphertext, aad })
+        .ok()
+}
+
+/// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+/// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+/// Zero allocations.
+pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let len = plaintext.len();
+    buf[..len].copy_from_slice(plaintext);
+    let tag = cipher
+        .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+        .expect("encryption failed");
+    buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+    len + AEAD_TAG_LEN
+}
+
+/// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+/// buf contains ciphertext + tag on input, plaintext on output.
+/// Zero allocations.
+pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+    if ct_len < AEAD_TAG_LEN {
+        return None;
+    }
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let pt_len = ct_len - AEAD_TAG_LEN;
+    let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+    let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+    cipher
+        .decrypt_in_place_detached(&nonce, &[], data, tag)
+        .ok()?;
+    Some(pt_len)
+}
+
+/// WireGuard nonce: 4 bytes of zeros || 8 bytes little-endian counter.
+fn build_nonce(counter: u64) -> Nonce {
+    let mut nonce = [0u8; 12];
+    nonce[4..].copy_from_slice(&counter.to_le_bytes());
+    Nonce::from(nonce)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seal_then_open() {
+        let key = [0x42u8; 32];
+        let plaintext = b"wireguard is elegant";
+        let aad = b"";
+
+        let ciphertext = seal(&key, 0, aad, plaintext);
+        assert_eq!(ciphertext.len(), plaintext.len() + AEAD_TAG_LEN);
+
+        let decrypted = open(&key, 0, aad, &ciphertext).expect("decryption failed");
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn wrong_key_fails() {
+        let key = [0x42u8; 32];
+        let wrong_key = [0x43u8; 32];
+
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&wrong_key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&key, 1, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn tampered_ciphertext_fails() {
+        let key = [0x42u8; 32];
+        let mut ciphertext = seal(&key, 0, b"", b"secret");
+        ciphertext[0] ^= 0xff;
+        assert!(open(&key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn aad_mismatch_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"correct", b"secret");
+        assert!(open(&key, 0, b"wrong", &ciphertext).is_none());
+    }
+}
+
+```
+
+## Symbols to evaluate
+
+- export constant AEAD_TAG_LEN (L7–L7)
+- export constant MAX_PACKET_SIZE (L10–L10)
+- export function seal (L16–L28)
+- export function open (L33–L45)
+- export function xseal (L48–L54)
+- export function xopen (L57–L63)
+- export function seal_to (L68–L78)
+- export function open_to (L83–L96)
+- function build_nonce (L99–L103)
+
+Identify any bugs, logic errors, or correctness issues and output the JSON.
+## Known False Positives (previously overturned by deliberation)
+
+The following findings were previously flagged by this axis but overturned during deliberation review. Do not re-flag them unless you have new evidence that the situation has changed.
+
+- **[deliberation] elapsed_since: correction NEEDS_FIX → OK**: Deliberation reclassified: Line 43-45 is the #[cfg(not(feature = "std"))] variant returning Duration::ZERO. The NEEDS_FIX flags this as silently disabling rotation, but the CookieChecker correction evaluator explicitly states 'the code comments acknowledge the kernel module uses an independent mechanism, making this an intentional design limitation rather than an unintended bug.' The LEAN evaluator concurs: 'No_std stub returning Duration::ZERO is the minimal correct behaviour.' This is a consistent, documented intentional design — the kernel module uses its own cookie checker. Reclassified to OK. Tests NONE kept — no no_std tests exist. Documentation UNDOCUMENTED kept.
+- **[deliberation] encode_addr: correction NEEDS_FIX → OK**: Deliberation reclassified: Correction NEEDS_FIX reclassified → OK: the claim that `alloc::vec::Vec` doesn't compile under std is likely wrong. In Rust crates targeting both std and no_std, it's standard practice to have `extern crate alloc;` unconditionally (or gated both ways). The function is exercised by all std tests (which create cookies using SocketAddr), proving it compiles and runs correctly. If it didn't compile, no tests would pass. Tests WEAK kept — IPv6 branch untested. Documentation PARTIAL kept.
+
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+```json
+{
+  "symbols": [
+    {
+      "name": "AEAD_TAG_LEN",
+      "line_start": 7,
+      "line_end": 7,
+      "correction": "OK",
+      "confidence": 99,
+      "detail": "ChaCha20-Poly1305 produces a 16-byte (128-bit) authentication tag. Value is correct."
+    },
+    {
+      "name": "MAX_PACKET_SIZE",
+      "line_start": 10,
+      "line_end": 10,
+      "correction": "NEEDS_FIX",
+      "confidence": 82,
+      "detail": "Doc comment states 'MTU 1420 + tag' but the expression uses 1500, yielding 1516 instead of 1436. WireGuard sets its interface MTU to ~1420 to leave room for IP/UDP/WireGuard headers on a 1500-byte Ethernet link. If callers use MAX_PACKET_SIZE as an upper-bound validator, they will accept packets ~80 bytes larger than the protocol allows."
+    },
+    {
+      "name": "seal",
+      "line_start": 16,
+      "line_end": 28,
+      "correction": "OK",
+      "confidence": 97,
+      "detail": "Key, nonce, and payload wiring are correct. The chacha20poly1305 crate's encrypt() method appends the 16-byte tag to the returned ciphertext, matching the expected WireGuard layout."
+    },
+    {
+      "name": "open",
+      "line_start": 33,
+      "line_end": 45,
+      "correction": "OK",
+      "confidence": 97,
+      "detail": "Nonce reconstructed identically to seal(). Authentication failures are correctly mapped to None via .ok(). No issues."
+    },
+    {
+      "name": "xseal",
+      "line_start": 48,
+      "line_end": 54,
+      "correction": "OK",
+      "confidence": 97,
+      "detail": "XChaCha20-Poly1305 path is correct. XNonce::from_slice is safe because nonce is &[u8; 24] and XNonce is 24 bytes."
+    },
+    {
+      "name": "xopen",
+      "line_start": 57,
+      "line_end": 63,
+      "correction": "OK",
+      "confidence": 97,
+      "detail": "Symmetric counterpart to xseal. Authentication failure correctly returns None."
+    },
+    {
+      "name": "seal_to",
+      "line_start": 68,
+      "line_end": 78,
+      "correction": "OK",
+      "confidence": 90,
+      "detail": "Preconditions (buf >= plaintext.len() + 16) are documented and panicking on contract violation is idiomatic for hot-path Rust. The encrypt_in_place_detached + manual tag append is correct. Empty AAD matches WireGuard transport usage."
+    },
+    {
+      "name": "open_to",
+      "line_start": 83,
+      "line_end": 96,
+      "correction": "NEEDS_FIX",
+      "confidence": 91,
+      "detail": "The function already performs partial input validation (ct_len < AEAD_TAG_LEN → None), signalling defensive intent. However it never checks ct_len > buf.len(). If a caller passes ct_len larger than buf's actual length, buf[..ct_len] panics instead of returning None. Because open_to processes potentially adversarial ciphertext and advertises an Option return for failure, the missing upper-bound guard is an inconsistency that causes a crash rather than a graceful failure."
+    },
+    {
+      "name": "build_nonce",
+      "line_start": 99,
+      "line_end": 103,
+      "correction": "OK",
+      "confidence": 98,
+      "detail": "Follows the WireGuard spec exactly: 96-bit nonce = 32 zero bits || 64-bit little-endian counter (section 5.4.6 of the WireGuard paper). nonce[4..] receives the 8 LE counter bytes, bytes 0-3 remain zero."
+    }
+  ],
+  "actions": [
+    {
+      "description": "MAX_PACKET_SIZE uses 1500 in its expression but the doc comment documents the limit as 'MTU 1420 + tag'. Change the constant to 1420 + AEAD_TAG_LEN (= 1436) to match the stated WireGuard transport MTU, or update the comment to reflect that 1500 is intentional (e.g. Ethernet MTU before WireGuard header subtraction). As-is, callers using this constant for size validation will accept oversized packets.",
+      "severity": "MAJOR",
+      "line": 10
+    },
+    {
+      "description": "open_to must guard against ct_len > buf.len() before indexing buf[..ct_len]. Add `if ct_len > buf.len() { return None; }` immediately after the AEAD_TAG_LEN check to prevent a panic when adversarial or malformed inputs arrive with an inflated ct_len.",
+      "severity": "CRITICAL",
+      "line": 86
+    }
+  ]
+}
+```
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.1838 | **Duration:** 96.3s
+
+
+---
+
+# Axis: overengineering
+
+## User
+
+## File: `rustguard-crypto/src/aead.rs`
+## Language: rust
+
+```rust
+use alloc::vec::Vec;
+use chacha20poly1305::{
+    aead::{Aead, AeadInPlace, KeyInit, Payload},
+    ChaCha20Poly1305, Nonce, XChaCha20Poly1305, XNonce,
+};
+
+pub const AEAD_TAG_LEN: usize = 16;
+
+/// Maximum WireGuard transport payload (MTU 1420 + tag).
+pub const MAX_PACKET_SIZE: usize = 1500 + AEAD_TAG_LEN;
+
+/// Encrypt plaintext with ChaCha20-Poly1305.
+///
+/// WireGuard uses a 64-bit counter as nonce (padded to 96 bits with 4 zero bytes).
+/// AAD is additional authenticated data (empty for transport, used in handshake).
+pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .encrypt(
+            &nonce,
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .expect("encryption failed")
+}
+
+/// Decrypt ciphertext with ChaCha20-Poly1305.
+///
+/// Returns None if authentication fails (wrong key, tampered data, wrong nonce).
+pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .decrypt(
+            &nonce,
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .ok()
+}
+
+/// Encrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie encryption.
+pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .encrypt(xnonce, Payload { msg: plaintext, aad })
+        .expect("xchacha encryption failed")
+}
+
+/// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .decrypt(xnonce, Payload { msg: ciphertext, aad })
+        .ok()
+}
+
+/// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+/// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+/// Zero allocations.
+pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let len = plaintext.len();
+    buf[..len].copy_from_slice(plaintext);
+    let tag = cipher
+        .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+        .expect("encryption failed");
+    buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+    len + AEAD_TAG_LEN
+}
+
+/// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+/// buf contains ciphertext + tag on input, plaintext on output.
+/// Zero allocations.
+pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+    if ct_len < AEAD_TAG_LEN {
+        return None;
+    }
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let pt_len = ct_len - AEAD_TAG_LEN;
+    let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+    let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+    cipher
+        .decrypt_in_place_detached(&nonce, &[], data, tag)
+        .ok()?;
+    Some(pt_len)
+}
+
+/// WireGuard nonce: 4 bytes of zeros || 8 bytes little-endian counter.
+fn build_nonce(counter: u64) -> Nonce {
+    let mut nonce = [0u8; 12];
+    nonce[4..].copy_from_slice(&counter.to_le_bytes());
+    Nonce::from(nonce)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seal_then_open() {
+        let key = [0x42u8; 32];
+        let plaintext = b"wireguard is elegant";
+        let aad = b"";
+
+        let ciphertext = seal(&key, 0, aad, plaintext);
+        assert_eq!(ciphertext.len(), plaintext.len() + AEAD_TAG_LEN);
+
+        let decrypted = open(&key, 0, aad, &ciphertext).expect("decryption failed");
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn wrong_key_fails() {
+        let key = [0x42u8; 32];
+        let wrong_key = [0x43u8; 32];
+
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&wrong_key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&key, 1, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn tampered_ciphertext_fails() {
+        let key = [0x42u8; 32];
+        let mut ciphertext = seal(&key, 0, b"", b"secret");
+        ciphertext[0] ^= 0xff;
+        assert!(open(&key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn aad_mismatch_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"correct", b"secret");
+        assert!(open(&key, 0, b"wrong", &ciphertext).is_none());
+    }
+}
+
+```
+
+## Symbols to evaluate
+
+- export constant AEAD_TAG_LEN (L7–L7)
+- export constant MAX_PACKET_SIZE (L10–L10)
+- export function seal (L16–L28)
+- export function open (L33–L45)
+- export function xseal (L48–L54)
+- export function xopen (L57–L63)
+- export function seal_to (L68–L78)
+- export function open_to (L83–L96)
+- function build_nonce (L99–L103)
+
+## Project Structure
+
+```
+├── rustguard-cli/
+│   └── src/
+│       └── main.rs
+├── rustguard-core/
+│   ├── src/
+│   │   ├── cookie.rs
+│   │   ├── handshake.rs
+│   │   ├── lib.rs
+│   │   ├── messages.rs
+│   │   ├── replay.rs
+│   │   ├── session.rs
+│   │   └── timers.rs
+│   └── tests/
+│       └── integration.rs
+├── rustguard-crypto/
+│   └── src/
+│       ├── aead.rs
+│       ├── blake2s.rs
+│       ├── lib.rs
+│       ├── tai64n.rs
+│       └── x25519.rs
+├── rustguard-daemon/
+│   └── src/
+│       ├── config.rs
+│       ├── lib.rs
+│       ├── peer.rs
+│       └── tunnel.rs
+├── rustguard-enroll/
+│   └── src/
+│       ├── client.rs
+│       ├── control.rs
+│       ├── fast_udp.rs
+│       ├── lib.rs
+│       ├── packet.rs
+│       ├── pool.rs
+│       ├── protocol.rs
+│       ├── server.rs
+│       └── state.rs
+├── rustguard-kmod/
+│   └── src/
+│       ├── allowedips.rs
+│       ├── cookie.rs
+│       ├── lib.rs
+│       ├── noise.rs
+│       ├── replay.rs
+│       └── timers.rs
+└── rustguard-tun/
+    ├── examples/
+    │   └── tun_echo.rs
+    └── src/
+        ├── bpf_loader.rs
+        ├── lib.rs
+        ├── linux_mq.rs
+        ├── linux.rs
+        ├── macos.rs
+        ├── uring.rs
+        └── xdp.rs
+```
+
+Use the project structure to detect excessive fragmentation:
+- Directory with only 1 file → potential fragmentation
+- More than 5 nesting levels → excessive structural complexity
+- Factory/adapter directories with ≤ 2 files → likely over-engineering
+These heuristics may increase a symbol's rating from LEAN to OVER.
+
+Evaluate the complexity of each symbol and output the JSON.
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+{
+  "symbols": [
+    {
+      "name": "AEAD_TAG_LEN",
+      "line_start": 7,
+      "line_end": 7,
+      "overengineering": "LEAN",
+      "confidence": 98,
+      "detail": "A named constant for the Poly1305 tag size. Necessary to avoid magic numbers in packet-size calculations and in-place buffer sizing throughout the crate."
+    },
+    {
+      "name": "MAX_PACKET_SIZE",
+      "line_start": 10,
+      "line_end": 10,
+      "overengineering": "LEAN",
+      "confidence": 97,
+      "detail": "Single derived constant encoding the WireGuard MTU contract (1420 payload + 16 tag + 64 overhead headroom). Appropriate for a protocol-level boundary constant."
+    },
+    {
+      "name": "seal",
+      "line_start": 16,
+      "line_end": 28,
+      "overengineering": "LEAN",
+      "confidence": 96,
+      "detail": "Minimal allocating encrypt wrapper that delegates entirely to the `chacha20poly1305` crate. AAD support is required by the WireGuard handshake spec. No unnecessary abstraction."
+    },
+    {
+      "name": "open",
+      "line_start": 33,
+      "line_end": 45,
+      "overengineering": "LEAN",
+      "confidence": 96,
+      "detail": "Direct mirror of `seal` for decryption. Returns Option to signal auth failure without panicking. Clean and minimal."
+    },
+    {
+      "name": "xseal",
+      "line_start": 48,
+      "line_end": 54,
+      "overengineering": "LEAN",
+      "confidence": 95,
+      "detail": "XChaCha20 variant is protocol-mandated for WireGuard cookie encryption (24-byte random nonce). A separate function rather than a generic abstraction is the correct, minimal choice here."
+    },
+    {
+      "name": "xopen",
+      "line_start": 57,
+      "line_end": 63,
+      "overengineering": "LEAN",
+      "confidence": 95,
+      "detail": "Symmetric counterpart to `xseal` for cookie decryption. Same justification — protocol-required, no unnecessary abstraction."
+    },
+    {
+      "name": "seal_to",
+      "line_start": 68,
+      "line_end": 78,
+      "overengineering": "LEAN",
+      "confidence": 94,
+      "detail": "Zero-allocation in-place encryption for the transport hot path. In a VPN daemon encrypting every outbound packet, avoiding heap allocation per packet is a legitimate, necessary optimization, not premature complexity."
+    },
+    {
+      "name": "open_to",
+      "line_start": 83,
+      "line_end": 96,
+      "overengineering": "LEAN",
+      "confidence": 94,
+      "detail": "Zero-allocation in-place decryption mirroring `seal_to`. The early guard for `ct_len < AEAD_TAG_LEN` is a minimal, correct safety check. Justified for the same hot-path reasons as `seal_to`."
+    },
+    {
+      "name": "build_nonce",
+      "line_start": 99,
+      "line_end": 103,
+      "overengineering": "LEAN",
+      "confidence": 97,
+      "detail": "Four-line private helper encoding exactly the WireGuard nonce layout (4 zero bytes || 8-byte LE counter). Factoring it out avoids duplication across `seal`, `open`, `seal_to`, and `open_to`. Appropriately scoped."
+    }
+  ]
+}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0750 | **Duration:** 29.8s
+
+
+---
+
+# Axis: tests
+
+## User
+
+## File: `rustguard-crypto/src/aead.rs`
+## Language: rust
+
+```rust
+use alloc::vec::Vec;
+use chacha20poly1305::{
+    aead::{Aead, AeadInPlace, KeyInit, Payload},
+    ChaCha20Poly1305, Nonce, XChaCha20Poly1305, XNonce,
+};
+
+pub const AEAD_TAG_LEN: usize = 16;
+
+/// Maximum WireGuard transport payload (MTU 1420 + tag).
+pub const MAX_PACKET_SIZE: usize = 1500 + AEAD_TAG_LEN;
+
+/// Encrypt plaintext with ChaCha20-Poly1305.
+///
+/// WireGuard uses a 64-bit counter as nonce (padded to 96 bits with 4 zero bytes).
+/// AAD is additional authenticated data (empty for transport, used in handshake).
+pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .encrypt(
+            &nonce,
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .expect("encryption failed")
+}
+
+/// Decrypt ciphertext with ChaCha20-Poly1305.
+///
+/// Returns None if authentication fails (wrong key, tampered data, wrong nonce).
+pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .decrypt(
+            &nonce,
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .ok()
+}
+
+/// Encrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie encryption.
+pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .encrypt(xnonce, Payload { msg: plaintext, aad })
+        .expect("xchacha encryption failed")
+}
+
+/// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .decrypt(xnonce, Payload { msg: ciphertext, aad })
+        .ok()
+}
+
+/// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+/// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+/// Zero allocations.
+pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let len = plaintext.len();
+    buf[..len].copy_from_slice(plaintext);
+    let tag = cipher
+        .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+        .expect("encryption failed");
+    buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+    len + AEAD_TAG_LEN
+}
+
+/// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+/// buf contains ciphertext + tag on input, plaintext on output.
+/// Zero allocations.
+pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+    if ct_len < AEAD_TAG_LEN {
+        return None;
+    }
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let pt_len = ct_len - AEAD_TAG_LEN;
+    let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+    let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+    cipher
+        .decrypt_in_place_detached(&nonce, &[], data, tag)
+        .ok()?;
+    Some(pt_len)
+}
+
+/// WireGuard nonce: 4 bytes of zeros || 8 bytes little-endian counter.
+fn build_nonce(counter: u64) -> Nonce {
+    let mut nonce = [0u8; 12];
+    nonce[4..].copy_from_slice(&counter.to_le_bytes());
+    Nonce::from(nonce)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seal_then_open() {
+        let key = [0x42u8; 32];
+        let plaintext = b"wireguard is elegant";
+        let aad = b"";
+
+        let ciphertext = seal(&key, 0, aad, plaintext);
+        assert_eq!(ciphertext.len(), plaintext.len() + AEAD_TAG_LEN);
+
+        let decrypted = open(&key, 0, aad, &ciphertext).expect("decryption failed");
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn wrong_key_fails() {
+        let key = [0x42u8; 32];
+        let wrong_key = [0x43u8; 32];
+
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&wrong_key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&key, 1, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn tampered_ciphertext_fails() {
+        let key = [0x42u8; 32];
+        let mut ciphertext = seal(&key, 0, b"", b"secret");
+        ciphertext[0] ^= 0xff;
+        assert!(open(&key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn aad_mismatch_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"correct", b"secret");
+        assert!(open(&key, 0, b"wrong", &ciphertext).is_none());
+    }
+}
+
+```
+
+## Symbols to evaluate
+
+- export constant AEAD_TAG_LEN (L7–L7)
+- export constant MAX_PACKET_SIZE (L10–L10)
+- export function seal (L16–L28)
+- export function open (L33–L45)
+- export function xseal (L48–L54)
+- export function xopen (L57–L63)
+- export function seal_to (L68–L78)
+- export function open_to (L83–L96)
+- function build_nonce (L99–L103)
+
+## Test File
+
+No test file found for this source file.
+
+## Project Structure
+
+```
+├── rustguard-cli/
+│   └── src/
+│       └── main.rs
+├── rustguard-core/
+│   ├── src/
+│   │   ├── cookie.rs
+│   │   ├── handshake.rs
+│   │   ├── lib.rs
+│   │   ├── messages.rs
+│   │   ├── replay.rs
+│   │   ├── session.rs
+│   │   └── timers.rs
+│   └── tests/
+│       └── integration.rs
+├── rustguard-crypto/
+│   └── src/
+│       ├── aead.rs
+│       ├── blake2s.rs
+│       ├── lib.rs
+│       ├── tai64n.rs
+│       └── x25519.rs
+├── rustguard-daemon/
+│   └── src/
+│       ├── config.rs
+│       ├── lib.rs
+│       ├── peer.rs
+│       └── tunnel.rs
+├── rustguard-enroll/
+│   └── src/
+│       ├── client.rs
+│       ├── control.rs
+│       ├── fast_udp.rs
+│       ├── lib.rs
+│       ├── packet.rs
+│       ├── pool.rs
+│       ├── protocol.rs
+│       ├── server.rs
+│       └── state.rs
+├── rustguard-kmod/
+│   └── src/
+│       ├── allowedips.rs
+│       ├── cookie.rs
+│       ├── lib.rs
+│       ├── noise.rs
+│       ├── replay.rs
+│       └── timers.rs
+└── rustguard-tun/
+    ├── examples/
+    │   └── tun_echo.rs
+    └── src/
+        ├── bpf_loader.rs
+        ├── lib.rs
+        ├── linux_mq.rs
+        ├── linux.rs
+        ├── macos.rs
+        ├── uring.rs
+        └── xdp.rs
+```
+
+Evaluate the test quality for each symbol and output the JSON.
+## Known False Positives (previously overturned by deliberation)
+
+The following findings were previously flagged by this axis but overturned during deliberation review. Do not re-flag them unless you have new evidence that the situation has changed.
+
+- **[deliberation] TransportSession: tests NONE → WEAK**: Deliberation reclassified: UTILITY DEAD→USED: This is a `pub struct` in a `-core` library crate (`rustguard-core`). Library crate public types are consumed by downstream crates in the workspace (e.g., `rustguard`). The utility evaluator likely only searched within the same crate and missed cross-crate imports, a classic false positive for workspace library crates. Reclassified to USED. TESTS NONE→WEAK: The merged field says NONE but the detail text itself says WEAK, and the source clearly contains 6 test functions in a `#[cfg(test)]` module covering encrypt/decrypt roundtrip, counter monotonicity, wrong-counter rejection, replay rejection, out-of-order delivery, and bidirectional use. The WEAK assessment is accurate: `encrypt_to` and `decrypt_in_place` (separate code paths using `seal_to`/`open_to`) have zero coverage, and nonce exhaustion / edge cases are untested. DOCUMENTATION UNDOCUMENTED→DOCUMENTED: The detail text itself concludes DOCUMENTED. The struct has a thorough `///` block (lines 7–11) explaining purpose, derivation, and key-role convention. Both public fields and all private fields carry `///` comments. Four of six methods have doc comments. Two public items (`new`, `send_counter`) lack doc comments (noted in best_practices rule 9), but the overall coverage is well above UNDOCUMENTED. The struct-level and field-level documentation is comprehensive.
+- **[deliberation] COOKIE_LEN: tests NONE → GOOD**: Deliberation reclassified: Utility DEAD reclassified → USED: this is a `pub const` in a library crate (`rustguard-core`). Downstream crates (e.g., message layout code) depend on it; pre-computed analysis likely doesn't capture cross-crate workspace imports. The entire cookie module is clearly used infrastructure for a WireGuard implementation. Tests NONE contradicts the detail text which says '[GOOD] Pure constant. Used throughout and indirectly validated in every roundtrip test.' For a pure constant with no runtime behavior, indirect validation is sufficient — reclassified to GOOD. Documentation UNDOCUMENTED is wrong — line 23 has `/// Cookie size.` which IS a doc comment, making this PARTIAL (brief but present).
+- **[deliberation] now: tests WEAK → GOOD**: Deliberation reclassified: Tests WEAK reclassified → GOOD: a 2-line wrapper around `Instant::now()` has nothing meaningful to test directly. It is called in every test via `CookieChecker::new()`. Requiring dedicated tests for this trivial wrapper is unreasonable. Documentation UNDOCUMENTED kept — no doc comment exists, though the function is private and self-descriptive.
+- **[deliberation] CookieChecker: tests NONE → WEAK**: Deliberation reclassified: Utility DEAD reclassified → USED: CookieChecker is the primary server-side public API of this module in a library crate. Pre-computed cross-crate analysis likely misses workspace-level imports. The entire module exists to support WireGuard cookie DoS protection — this struct is clearly intended for use by consuming crates. Tests NONE contradicts the detail text which says 'happy-path methods (create_reply, verify_mac2) are reasonably well tested across four tests' — reclassified to WEAK (tested but with gaps in verify_mac1, rotation, new_with). Documentation UNDOCUMENTED contradicts detail: 'Struct has a /// summary and all four fields have field-level /// comments.' Line 49 has a doc comment. Reclassified to PARTIAL (docs exist but missing examples and constructor docs).
+- **[deliberation] CookieState: tests NONE → WEAK**: Deliberation reclassified: Correction NEEDS_FIX kept: unlike elapsed_since, the consequence here is that process_reply successfully decrypts a cookie but never marks it as fresh, making compute_mac2 silently return zeros on no_std. While the overall no_std design is intentional, this specific behavior is more insidious — a successful decryption followed by silent failure to use the cookie is a subtle trap with no comment explaining it. Utility DEAD → USED: same reasoning as CookieChecker — primary client-side public API in a library crate. Tests NONE → WEAK: detail says 'Happy path covered: process_reply success, wrong-MAC1 failure, compute_mac2 with/without cookie.' Documentation UNDOCUMENTED → PARTIAL: detail says 'Struct has a /// summary and both private fields have doc comments.'
+
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+{
+  "symbols": [
+    {
+      "name": "AEAD_TAG_LEN",
+      "line_start": 7,
+      "line_end": 7,
+      "tests": "GOOD",
+      "confidence": 95,
+      "detail": "Pure compile-time constant with no runtime behavior. Directly referenced in the `seal_then_open` assertion (`ciphertext.len() == plaintext.len() + AEAD_TAG_LEN`), providing indirect validation of its value (16)."
+    },
+    {
+      "name": "MAX_PACKET_SIZE",
+      "line_start": 10,
+      "line_end": 10,
+      "tests": "GOOD",
+      "confidence": 95,
+      "detail": "Pure compile-time constant with no runtime behavior. Types, constants, and enums with no runtime logic are GOOD by default. No dedicated test needed."
+    },
+    {
+      "name": "seal",
+      "line_start": 16,
+      "line_end": 28,
+      "tests": "WEAK",
+      "confidence": 88,
+      "detail": "Happy path tested in `seal_then_open` (empty AAD, fixed counter 0, realistic plaintext). AAD path exercised indirectly via `aad_mismatch_fails`. Missing: empty plaintext, large/max-size plaintext, non-zero counter values as the sealing side, and explicit verification of ciphertext bytes (tests only check length and roundtrip). Edge cases like counter=u64::MAX are absent."
+    },
+    {
+      "name": "open",
+      "line_start": 33,
+      "line_end": 45,
+      "tests": "GOOD",
+      "confidence": 90,
+      "detail": "Five tests exercise `open` thoroughly: happy path (seal_then_open), wrong key (wrong_key_fails), wrong counter (wrong_counter_fails), bit-flipped ciphertext (tampered_ciphertext_fails), and AAD mismatch (aad_mismatch_fails). All four primary authentication-failure modes are covered. Minor gap: no test for ciphertext shorter than AEAD_TAG_LEN, but the core contract is well validated."
+    },
+    {
+      "name": "xseal",
+      "line_start": 48,
+      "line_end": 54,
+      "tests": "NONE",
+      "confidence": 95,
+      "detail": "No test in the inline `#[cfg(test)]` module covers `xseal`. Used for WireGuard cookie encryption — a security-critical path — with zero test coverage. Neither happy path nor authentication-failure scenarios are tested."
+    },
+    {
+      "name": "xopen",
+      "line_start": 57,
+      "line_end": 63,
+      "tests": "NONE",
+      "confidence": 95,
+      "detail": "No test in the inline `#[cfg(test)]` module covers `xopen`. The XChaCha20-Poly1305 decryption path (used for cookie decryption) has zero test coverage; roundtrip, wrong key, tampered data, and nonce mismatch are all untested."
+    },
+    {
+      "name": "seal_to",
+      "line_start": 68,
+      "line_end": 78,
+      "tests": "NONE",
+      "confidence": 95,
+      "detail": "No test in the inline `#[cfg(test)]` module covers `seal_to`. The zero-allocation in-place encryption path is entirely untested: output length, correct tag placement in buf, and buffer-size semantics are all unverified."
+    },
+    {
+      "name": "open_to",
+      "line_start": 83,
+      "line_end": 96,
+      "tests": "NONE",
+      "confidence": 95,
+      "detail": "No test in the inline `#[cfg(test)]` module covers `open_to`. The short-buffer guard (`ct_len < AEAD_TAG_LEN → None`), the happy-path decryption, and authentication-failure behavior are all completely untested."
+    },
+    {
+      "name": "build_nonce",
+      "line_start": 99,
+      "line_end": 103,
+      "tests": "WEAK",
+      "confidence": 80,
+      "detail": "Private helper indirectly exercised by all five inline tests via `seal`/`open`. However, the WireGuard-specific nonce layout (4 zero bytes prepended to 8-byte LE counter) is never explicitly verified — no test inspects the nonce bytes or confirms the encoding of counter=1 vs counter=0. The `wrong_counter_fails` test only proves different counters produce different nonces, not that the byte layout matches the WireGuard spec."
+    }
+  ]
+}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.1010 | **Duration:** 40.2s
+
+
+---
+
+# Axis: best_practices
+
+## User
+
+## File: `rustguard-crypto/src/aead.rs`
+## Language: rust
+## Context: general
+
+```rust
+use alloc::vec::Vec;
+use chacha20poly1305::{
+    aead::{Aead, AeadInPlace, KeyInit, Payload},
+    ChaCha20Poly1305, Nonce, XChaCha20Poly1305, XNonce,
+};
+
+pub const AEAD_TAG_LEN: usize = 16;
+
+/// Maximum WireGuard transport payload (MTU 1420 + tag).
+pub const MAX_PACKET_SIZE: usize = 1500 + AEAD_TAG_LEN;
+
+/// Encrypt plaintext with ChaCha20-Poly1305.
+///
+/// WireGuard uses a 64-bit counter as nonce (padded to 96 bits with 4 zero bytes).
+/// AAD is additional authenticated data (empty for transport, used in handshake).
+pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .encrypt(
+            &nonce,
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .expect("encryption failed")
+}
+
+/// Decrypt ciphertext with ChaCha20-Poly1305.
+///
+/// Returns None if authentication fails (wrong key, tampered data, wrong nonce).
+pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .decrypt(
+            &nonce,
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .ok()
+}
+
+/// Encrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie encryption.
+pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .encrypt(xnonce, Payload { msg: plaintext, aad })
+        .expect("xchacha encryption failed")
+}
+
+/// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .decrypt(xnonce, Payload { msg: ciphertext, aad })
+        .ok()
+}
+
+/// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+/// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+/// Zero allocations.
+pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let len = plaintext.len();
+    buf[..len].copy_from_slice(plaintext);
+    let tag = cipher
+        .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+        .expect("encryption failed");
+    buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+    len + AEAD_TAG_LEN
+}
+
+/// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+/// buf contains ciphertext + tag on input, plaintext on output.
+/// Zero allocations.
+pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+    if ct_len < AEAD_TAG_LEN {
+        return None;
+    }
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let pt_len = ct_len - AEAD_TAG_LEN;
+    let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+    let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+    cipher
+        .decrypt_in_place_detached(&nonce, &[], data, tag)
+        .ok()?;
+    Some(pt_len)
+}
+
+/// WireGuard nonce: 4 bytes of zeros || 8 bytes little-endian counter.
+fn build_nonce(counter: u64) -> Nonce {
+    let mut nonce = [0u8; 12];
+    nonce[4..].copy_from_slice(&counter.to_le_bytes());
+    Nonce::from(nonce)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seal_then_open() {
+        let key = [0x42u8; 32];
+        let plaintext = b"wireguard is elegant";
+        let aad = b"";
+
+        let ciphertext = seal(&key, 0, aad, plaintext);
+        assert_eq!(ciphertext.len(), plaintext.len() + AEAD_TAG_LEN);
+
+        let decrypted = open(&key, 0, aad, &ciphertext).expect("decryption failed");
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn wrong_key_fails() {
+        let key = [0x42u8; 32];
+        let wrong_key = [0x43u8; 32];
+
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&wrong_key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&key, 1, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn tampered_ciphertext_fails() {
+        let key = [0x42u8; 32];
+        let mut ciphertext = seal(&key, 0, b"", b"secret");
+        ciphertext[0] ^= 0xff;
+        assert!(open(&key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn aad_mismatch_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"correct", b"secret");
+        assert!(open(&key, 0, b"wrong", &ciphertext).is_none());
+    }
+}
+
+```
+
+## File stats
+- Lines: 152
+- Symbols: 9
+- Exported symbols: 8
+
+## Project Structure
+
+```
+├── rustguard-cli/
+│   └── src/
+│       └── main.rs
+├── rustguard-core/
+│   ├── src/
+│   │   ├── cookie.rs
+│   │   ├── handshake.rs
+│   │   ├── lib.rs
+│   │   ├── messages.rs
+│   │   ├── replay.rs
+│   │   ├── session.rs
+│   │   └── timers.rs
+│   └── tests/
+│       └── integration.rs
+├── rustguard-crypto/
+│   └── src/
+│       ├── aead.rs
+│       ├── blake2s.rs
+│       ├── lib.rs
+│       ├── tai64n.rs
+│       └── x25519.rs
+├── rustguard-daemon/
+│   └── src/
+│       ├── config.rs
+│       ├── lib.rs
+│       ├── peer.rs
+│       └── tunnel.rs
+├── rustguard-enroll/
+│   └── src/
+│       ├── client.rs
+│       ├── control.rs
+│       ├── fast_udp.rs
+│       ├── lib.rs
+│       ├── packet.rs
+│       ├── pool.rs
+│       ├── protocol.rs
+│       ├── server.rs
+│       └── state.rs
+├── rustguard-kmod/
+│   └── src/
+│       ├── allowedips.rs
+│       ├── cookie.rs
+│       ├── lib.rs
+│       ├── noise.rs
+│       ├── replay.rs
+│       └── timers.rs
+└── rustguard-tun/
+    ├── examples/
+    │   └── tun_echo.rs
+    └── src/
+        ├── bpf_loader.rs
+        ├── lib.rs
+        ├── linux_mq.rs
+        ├── linux.rs
+        ├── macos.rs
+        ├── uring.rs
+        └── xdp.rs
+```
+
+Use the project structure above to evaluate rule 11 (import organization) and detect file placement inconsistencies. If the file is in an unexpected directory given the project conventions, flag it as WARN for the most relevant rule.
+
+Evaluate all 17 rules and output the JSON.
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+{
+  "score": 7.5,
+  "rules": [
+    {
+      "rule_id": 1,
+      "rule_name": "No unwrap in production code",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "detail": "No `.unwrap()` calls are present. All fallible operations use `.expect(\"…\")` (explicitly permitted by this rule) or `.ok()` conversions. Test module uses `.expect()` which is allowed per rule exception.",
+      "lines": "L26, L52, L72"
+    },
+    {
+      "rule_id": 2,
+      "rule_name": "No unsafe blocks without justification",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "detail": "No `unsafe` blocks anywhere in the file. All operations go through safe abstractions from the `chacha20poly1305` crate."
+    },
+    {
+      "rule_id": 3,
+      "rule_name": "Proper error handling with Result/Option",
+      "status": "WARN",
+      "severity": "HIGH",
+      "detail": "`seal()`, `xseal()`, and `seal_to()` return `Vec<u8>`/`usize` directly and convert encrypt errors to panics via `.expect()`, silencing them from the caller's perspective. A library crate should surface errors via `Result<Vec<u8>, AeadError>` so callers can handle them. The decrypt paths (`open`, `open_to`, `xopen`) correctly use `Option` for auth failures and `.ok()` for conversion.",
+      "lines": "L17-L28, L47-L55, L65-L77"
+    },
+    {
+      "rule_id": 4,
+      "rule_name": "Derive common traits on public types",
+      "status": "PASS",
+      "severity": "MEDIUM",
+      "detail": "No public structs or enums are defined in this file. Only public constants and functions are exported. Rule is not applicable."
+    },
+    {
+      "rule_id": 5,
+      "rule_name": "Lifetime annotations explicit where needed",
+      "status": "PASS",
+      "severity": "MEDIUM",
+      "detail": "Lifetime elision is correctly applied throughout. All function parameters are independent input references, and all return types are owned (`Vec<u8>`, `Option<Vec<u8>>`, `usize`, `Option<usize>`). No output lifetimes are elided — elision is unambiguous here."
+    },
+    {
+      "rule_id": 6,
+      "rule_name": "Clippy idioms",
+      "status": "PASS",
+      "severity": "MEDIUM",
+      "detail": "Code is idiomatic: `split_at_mut` is used correctly for zero-copy in-place decryption, `copy_from_slice` is preferred over manual loops, no unnecessary `clone()` calls, and no manual iterator loops where chaining would be cleaner."
+    },
+    {
+      "rule_id": 7,
+      "rule_name": "No panic in library/production code",
+      "status": "WARN",
+      "severity": "CRITICAL",
+      "detail": "This is a library crate (`rustguard-crypto`). Three public functions — `seal()` (L26), `xseal()` (L52), and `seal_to()` (L72) — call `.expect()`, which panics on error. While ChaCha20-Poly1305 encryption with correctly typed fixed-size keys should never fail in practice, a library must not impose panics on its callers. The idiomatic fix is to return `Result<Vec<u8>, chacha20poly1305::Error>` and use `?`. No literal `panic!` macro is used, so this is WARN rather than FAIL.",
+      "lines": "L26, L52, L72"
+    },
+    {
+      "rule_id": 8,
+      "rule_name": "Module organization",
+      "status": "PASS",
+      "severity": "MEDIUM",
+      "detail": "File is correctly placed in `rustguard-crypto/src/aead.rs` as an AEAD-specific module within the crypto crate. The project structure shows a clean `lib.rs` alongside peer modules (`blake2s.rs`, `x25519.rs`, `tai64n.rs`). Module hierarchy follows a standard flat-within-crate convention appropriate for a focused crypto library."
+    },
+    {
+      "rule_id": 9,
+      "rule_name": "Documentation comments on public items",
+      "status": "WARN",
+      "severity": "MEDIUM",
+      "detail": "`AEAD_TAG_LEN` (L7) is a public constant with no `///` documentation comment. All six public functions (`seal`, `open`, `xseal`, `xopen`, `seal_to`, `open_to`) and `MAX_PACKET_SIZE` are well-documented. One public constant is missing a doc comment.",
+      "lines": "L7"
+    },
+    {
+      "rule_id": 10,
+      "rule_name": "No hardcoded secrets or credentials",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "detail": "No hardcoded secrets or credentials. Test keys (`[0x42u8; 32]`, `[0x43u8; 32]`) are clearly test-only fixtures confined to the `#[cfg(test)]` module."
+    },
+    {
+      "rule_id": 11,
+      "rule_name": "Memory safety",
+      "status": "PASS",
+      "severity": "HIGH",
+      "detail": "No `mem::forget`, no raw pointer arithmetic, no manual `Drop` implementations. The in-place operations in `seal_to` and `open_to` use safe slice indexing with explicit length bounds checks (`ct_len < AEAD_TAG_LEN` guard at L87). Buffer aliasing is handled correctly via `split_at_mut`."
+    },
+    {
+      "rule_id": 12,
+      "rule_name": "Concurrency safety",
+      "status": "PASS",
+      "severity": "HIGH",
+      "detail": "All functions are fully stateless — each call creates a fresh `ChaCha20Poly1305` or `XChaCha20Poly1305` instance on the stack. No global mutable state, no shared references, no `Arc`/`Mutex` needed. Functions are implicitly `Send + Sync` safe."
+    }
+  ],
+  "suggestions": [
+    {
+      "description": "Return `Result` from `seal` instead of panicking, so callers can handle encryption errors without risking a library-triggered panic.",
+      "before": "pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {\n    let cipher = ChaCha20Poly1305::new(key.into());\n    let nonce = build_nonce(counter);\n    cipher\n        .encrypt(&nonce, Payload { msg: plaintext, aad })\n        .expect(\"encryption failed\")\n}",
+      "after": "pub fn seal(\n    key: &[u8; 32],\n    counter: u64,\n    aad: &[u8],\n    plaintext: &[u8],\n) -> Result<Vec<u8>, chacha20poly1305::Error> {\n    let cipher = ChaCha20Poly1305::new(key.into());\n    let nonce = build_nonce(counter);\n    cipher.encrypt(&nonce, Payload { msg: plaintext, aad })\n}"
+    },
+    {
+      "description": "Add a `///` doc comment to the public constant `AEAD_TAG_LEN` to document its role and value.",
+      "before": "pub const AEAD_TAG_LEN: usize = 16;",
+      "after": "/// Length in bytes of the Poly1305 authentication tag appended by ChaCha20-Poly1305 encryption.\npub const AEAD_TAG_LEN: usize = 16;"
+    },
+    {
+      "description": "Return `Result` from `seal_to` so in-place encryption errors are surfaced to callers instead of panicking inside a library function.",
+      "before": "pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {\n    ...\n    let tag = cipher\n        .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])\n        .expect(\"encryption failed\");\n    ...\n}",
+      "after": "pub fn seal_to(\n    key: &[u8; 32],\n    counter: u64,\n    plaintext: &[u8],\n    buf: &mut [u8],\n) -> Result<usize, chacha20poly1305::Error> {\n    ...\n    let tag = cipher\n        .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])?;\n    ...\n    Ok(len + AEAD_TAG_LEN)\n}"
+    }
+  ]
+}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.2179 | **Duration:** 115.2s
+
+
+---
+
+# Axis: documentation
+
+## User
+
+## File: `rustguard-crypto/src/aead.rs`
+## Language: rust
+
+```rust
+use alloc::vec::Vec;
+use chacha20poly1305::{
+    aead::{Aead, AeadInPlace, KeyInit, Payload},
+    ChaCha20Poly1305, Nonce, XChaCha20Poly1305, XNonce,
+};
+
+pub const AEAD_TAG_LEN: usize = 16;
+
+/// Maximum WireGuard transport payload (MTU 1420 + tag).
+pub const MAX_PACKET_SIZE: usize = 1500 + AEAD_TAG_LEN;
+
+/// Encrypt plaintext with ChaCha20-Poly1305.
+///
+/// WireGuard uses a 64-bit counter as nonce (padded to 96 bits with 4 zero bytes).
+/// AAD is additional authenticated data (empty for transport, used in handshake).
+pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .encrypt(
+            &nonce,
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .expect("encryption failed")
+}
+
+/// Decrypt ciphertext with ChaCha20-Poly1305.
+///
+/// Returns None if authentication fails (wrong key, tampered data, wrong nonce).
+pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .decrypt(
+            &nonce,
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .ok()
+}
+
+/// Encrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie encryption.
+pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .encrypt(xnonce, Payload { msg: plaintext, aad })
+        .expect("xchacha encryption failed")
+}
+
+/// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .decrypt(xnonce, Payload { msg: ciphertext, aad })
+        .ok()
+}
+
+/// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+/// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+/// Zero allocations.
+pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let len = plaintext.len();
+    buf[..len].copy_from_slice(plaintext);
+    let tag = cipher
+        .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+        .expect("encryption failed");
+    buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+    len + AEAD_TAG_LEN
+}
+
+/// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+/// buf contains ciphertext + tag on input, plaintext on output.
+/// Zero allocations.
+pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+    if ct_len < AEAD_TAG_LEN {
+        return None;
+    }
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let pt_len = ct_len - AEAD_TAG_LEN;
+    let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+    let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+    cipher
+        .decrypt_in_place_detached(&nonce, &[], data, tag)
+        .ok()?;
+    Some(pt_len)
+}
+
+/// WireGuard nonce: 4 bytes of zeros || 8 bytes little-endian counter.
+fn build_nonce(counter: u64) -> Nonce {
+    let mut nonce = [0u8; 12];
+    nonce[4..].copy_from_slice(&counter.to_le_bytes());
+    Nonce::from(nonce)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seal_then_open() {
+        let key = [0x42u8; 32];
+        let plaintext = b"wireguard is elegant";
+        let aad = b"";
+
+        let ciphertext = seal(&key, 0, aad, plaintext);
+        assert_eq!(ciphertext.len(), plaintext.len() + AEAD_TAG_LEN);
+
+        let decrypted = open(&key, 0, aad, &ciphertext).expect("decryption failed");
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn wrong_key_fails() {
+        let key = [0x42u8; 32];
+        let wrong_key = [0x43u8; 32];
+
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&wrong_key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&key, 1, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn tampered_ciphertext_fails() {
+        let key = [0x42u8; 32];
+        let mut ciphertext = seal(&key, 0, b"", b"secret");
+        ciphertext[0] ^= 0xff;
+        assert!(open(&key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn aad_mismatch_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"correct", b"secret");
+        assert!(open(&key, 0, b"wrong", &ciphertext).is_none());
+    }
+}
+
+```
+
+## Symbols to evaluate
+
+- export constant AEAD_TAG_LEN (L7–L7)
+- export constant MAX_PACKET_SIZE (L10–L10)
+- export function seal (L16–L28)
+- export function open (L33–L45)
+- export function xseal (L48–L54)
+- export function xopen (L57–L63)
+- export function seal_to (L68–L78)
+- export function open_to (L83–L96)
+- function build_nonce (L99–L103)
+
+## Documentation Directory
+
+No /docs/ directory found — evaluate JSDoc only, skip concept coverage.
+
+Evaluate documentation for each symbol and output the JSON.
+## Known False Positives (previously overturned by deliberation)
+
+The following findings were previously flagged by this axis but overturned during deliberation review. Do not re-flag them unless you have new evidence that the situation has changed.
+
+- **[deliberation] TransportSession: documentation UNDOCUMENTED → DOCUMENTED**: Deliberation reclassified: UTILITY DEAD→USED: This is a `pub struct` in a `-core` library crate (`rustguard-core`). Library crate public types are consumed by downstream crates in the workspace (e.g., `rustguard`). The utility evaluator likely only searched within the same crate and missed cross-crate imports, a classic false positive for workspace library crates. Reclassified to USED. TESTS NONE→WEAK: The merged field says NONE but the detail text itself says WEAK, and the source clearly contains 6 test functions in a `#[cfg(test)]` module covering encrypt/decrypt roundtrip, counter monotonicity, wrong-counter rejection, replay rejection, out-of-order delivery, and bidirectional use. The WEAK assessment is accurate: `encrypt_to` and `decrypt_in_place` (separate code paths using `seal_to`/`open_to`) have zero coverage, and nonce exhaustion / edge cases are untested. DOCUMENTATION UNDOCUMENTED→DOCUMENTED: The detail text itself concludes DOCUMENTED. The struct has a thorough `///` block (lines 7–11) explaining purpose, derivation, and key-role convention. Both public fields and all private fields carry `///` comments. Four of six methods have doc comments. Two public items (`new`, `send_counter`) lack doc comments (noted in best_practices rule 9), but the overall coverage is well above UNDOCUMENTED. The struct-level and field-level documentation is comprehensive.
+- **[deliberation] COOKIE_LEN: documentation UNDOCUMENTED → PARTIAL**: Deliberation reclassified: Utility DEAD reclassified → USED: this is a `pub const` in a library crate (`rustguard-core`). Downstream crates (e.g., message layout code) depend on it; pre-computed analysis likely doesn't capture cross-crate workspace imports. The entire cookie module is clearly used infrastructure for a WireGuard implementation. Tests NONE contradicts the detail text which says '[GOOD] Pure constant. Used throughout and indirectly validated in every roundtrip test.' For a pure constant with no runtime behavior, indirect validation is sufficient — reclassified to GOOD. Documentation UNDOCUMENTED is wrong — line 23 has `/// Cookie size.` which IS a doc comment, making this PARTIAL (brief but present).
+- **[deliberation] CookieChecker: documentation UNDOCUMENTED → PARTIAL**: Deliberation reclassified: Utility DEAD reclassified → USED: CookieChecker is the primary server-side public API of this module in a library crate. Pre-computed cross-crate analysis likely misses workspace-level imports. The entire module exists to support WireGuard cookie DoS protection — this struct is clearly intended for use by consuming crates. Tests NONE contradicts the detail text which says 'happy-path methods (create_reply, verify_mac2) are reasonably well tested across four tests' — reclassified to WEAK (tested but with gaps in verify_mac1, rotation, new_with). Documentation UNDOCUMENTED contradicts detail: 'Struct has a /// summary and all four fields have field-level /// comments.' Line 49 has a doc comment. Reclassified to PARTIAL (docs exist but missing examples and constructor docs).
+- **[deliberation] CookieState: documentation UNDOCUMENTED → PARTIAL**: Deliberation reclassified: Correction NEEDS_FIX kept: unlike elapsed_since, the consequence here is that process_reply successfully decrypts a cookie but never marks it as fresh, making compute_mac2 silently return zeros on no_std. While the overall no_std design is intentional, this specific behavior is more insidious — a successful decryption followed by silent failure to use the cookie is a subtle trap with no comment explaining it. Utility DEAD → USED: same reasoning as CookieChecker — primary client-side public API in a library crate. Tests NONE → WEAK: detail says 'Happy path covered: process_reply success, wrong-MAC1 failure, compute_mac2 with/without cookie.' Documentation UNDOCUMENTED → PARTIAL: detail says 'Struct has a /// summary and both private fields have doc comments.'
+
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+{
+  "symbols": [
+    {
+      "name": "AEAD_TAG_LEN",
+      "line_start": 7,
+      "line_end": 7,
+      "documentation": "UNDOCUMENTED",
+      "confidence": 95,
+      "detail": "No `///` doc comment present. Public constant with an opaque numeric value (16) would benefit from a brief description explaining it represents the Poly1305 authentication tag length in bytes."
+    },
+    {
+      "name": "MAX_PACKET_SIZE",
+      "line_start": 10,
+      "line_end": 10,
+      "documentation": "PARTIAL",
+      "confidence": 85,
+      "detail": "Has a single-line `///` doc comment, but the description is slightly inaccurate: it claims 'MTU 1420' while the actual computation is `1500 + AEAD_TAG_LEN`. The discrepancy between the documented MTU (1420) and the code value (1500) is a documentation correctness issue. No examples expected for constants, but more precision is warranted."
+    },
+    {
+      "name": "seal",
+      "line_start": 16,
+      "line_end": 28,
+      "documentation": "PARTIAL",
+      "confidence": 85,
+      "detail": "Has a `///` block describing purpose and nonce construction rationale, and briefly mentions AAD semantics. However, none of the four parameters (`key`, `counter`, `aad`, `plaintext`) are individually documented, the return type semantics are not described, and there is no `# Examples` section as expected for a public API function."
+    },
+    {
+      "name": "open",
+      "line_start": 33,
+      "line_end": 45,
+      "documentation": "PARTIAL",
+      "confidence": 85,
+      "detail": "Has a `///` block with a purpose line and a useful `Returns None` explanation covering three failure conditions. However, no individual parameter descriptions exist, and no `# Examples` section is provided, which is expected for public decryption APIs."
+    },
+    {
+      "name": "xseal",
+      "line_start": 48,
+      "line_end": 54,
+      "documentation": "PARTIAL",
+      "confidence": 85,
+      "detail": "Has a single-line `///` comment noting the algorithm, nonce size, and intended use (cookie encryption). No parameter descriptions, no return value description, and no `# Examples` section. The doc is minimal but not absent."
+    },
+    {
+      "name": "xopen",
+      "line_start": 57,
+      "line_end": 63,
+      "documentation": "PARTIAL",
+      "confidence": 85,
+      "detail": "Has a single-line `///` comment noting the algorithm, nonce size, and use case. Missing parameter descriptions, return-value semantics (e.g., when `None` is returned), and a `# Examples` section expected for public APIs."
+    },
+    {
+      "name": "seal_to",
+      "line_start": 68,
+      "line_end": 78,
+      "documentation": "PARTIAL",
+      "confidence": 85,
+      "detail": "Has a three-line `///` block describing purpose, buffer size precondition, and the zero-allocation property. Lacks individual parameter documentation, missing a `# Panics` section despite calling `.expect()` unconditionally, and no `# Examples` section."
+    },
+    {
+      "name": "open_to",
+      "line_start": 83,
+      "line_end": 96,
+      "documentation": "PARTIAL",
+      "confidence": 85,
+      "detail": "Has a three-line `///` block describing purpose, buffer in/out contract, and zero-allocation guarantee. Missing formal parameter descriptions (e.g., semantics of `ct_len`), no `# Panics` for the internal `expect`, and no `# Examples` section required for public API."
+    },
+    {
+      "name": "build_nonce",
+      "line_start": 99,
+      "line_end": 103,
+      "documentation": "DOCUMENTED",
+      "confidence": 90,
+      "detail": "Private function with a clear, precise `///` comment describing the exact WireGuard nonce wire format (4 zero bytes || 8-byte LE counter). For a private helper with a descriptive name, this level of documentation is appropriate and complete. No `# Examples` required."
+    }
+  ],
+  "docs_coverage": {
+    "concepts": [],
+    "score_pct": 44
+  }
+}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.1227 | **Duration:** 60.5s
+
+
+---
+
+# Deliberation Pass
+
+## User
+
+## Merged ReviewFile (from 7 axis evaluators)
+
+```json
+{
+  "version": 2,
+  "file": "rustguard-crypto/src/aead.rs",
+  "is_generated": false,
+  "language": "rust",
+  "parse_method": "ast",
+  "verdict": "NEEDS_REFACTOR",
+  "symbols": [
+    {
+      "name": "AEAD_TAG_LEN",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 7,
+      "line_end": 7,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "DEAD",
+      "duplication": "UNIQUE",
+      "tests": "NONE",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 95,
+      "detail": "[DEAD] Exported constant with 0 runtime/type-only importers. Public API constant in library crate (rustguard-crypto); pattern matches Known False Positives (COOKIE_LEN case). Likely consumed by downstream crates. | [UNIQUE] Simple constant (16). No similar constants reported by RAG. | [OK] ChaCha20-Poly1305 produces a 16-byte (128-bit) authentication tag. Value is correct. | [LEAN] A named constant for the Poly1305 tag size. Necessary to avoid magic numbers in packet-size calculations and in-place buffer sizing throughout the crate. | [GOOD] Pure compile-time constant with no runtime behavior. Directly referenced in the `seal_then_open` assertion (`ciphertext.len() == plaintext.len() + AEAD_TAG_LEN`), providing indirect validation of its value (16). | [UNDOCUMENTED] No `///` doc comment present. Public constant with an opaque numeric value (16) would benefit from a brief description explaining it represents the Poly1305 authentication tag length in bytes."
+    },
+    {
+      "name": "MAX_PACKET_SIZE",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 10,
+      "line_end": 10,
+      "correction": "NEEDS_FIX",
+      "overengineering": "LEAN",
+      "utility": "DEAD",
+      "duplication": "UNIQUE",
+      "tests": "NONE",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 82,
+      "detail": "[DEAD] Exported constant with 0 runtime/type-only importers. Public API constant in crypto library crate; no internal usage. Likely false positive for library public export. | [UNIQUE] Constant definition (1500 + AEAD_TAG_LEN). No duplicates found. | [NEEDS_FIX] Doc comment states 'MTU 1420 + tag' but the expression uses 1500, yielding 1516 instead of 1436. WireGuard sets its interface MTU to ~1420 to leave room for IP/UDP/WireGuard headers on a 1500-byte Ethernet link. If callers use MAX_PACKET_SIZE as an upper-bound validator, they will accept packets ~80 bytes larger than the protocol allows. | [LEAN] Single derived constant encoding the WireGuard MTU contract (1420 payload + 16 tag + 64 overhead headroom). Appropriate for a protocol-level boundary constant. | [GOOD] Pure compile-time constant with no runtime behavior. Types, constants, and enums with no runtime logic are GOOD by default. No dedicated test needed. | [PARTIAL] Has a single-line `///` doc comment, but the description is slightly inaccurate: it claims 'MTU 1420' while the actual computation is `1500 + AEAD_TAG_LEN`. The discrepancy between the documented MTU (1420) and the code value (1500) is a documentation correctness issue. No examples expected for constants, but more precision is warranted."
+    },
+    {
+      "name": "seal",
+      "kind": "function",
+      "exported": true,
+      "line_start": 16,
+      "line_end": 28,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "DEAD",
+      "duplication": "UNIQUE",
+      "tests": "NONE",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 85,
+      "detail": "[DEAD] Exported core AEAD encryption function with 0 runtime/type-only importers. Primary public API of rustguard-crypto library; likely consumed by downstream crates. Pattern matches Known False Positives. | [UNIQUE] Encrypts with ChaCha20-Poly1305, returns allocated Vec<u8>. RAG shows similarity to seal in noise.rs (0.872, kernel FFI vs library), xseal (0.820, different cipher), seal_to (0.758, different return strategy). Different semantic contracts—cannot be substituted for one another. | [OK] Key, nonce, and payload wiring are correct. The chacha20poly1305 crate's encrypt() method appends the 16-byte tag to the returned ciphertext, matching the expected WireGuard layout. | [LEAN] Minimal allocating encrypt wrapper that delegates entirely to the `chacha20poly1305` crate. AAD support is required by the WireGuard handshake spec. No unnecessary abstraction. | [WEAK] Happy path tested in `seal_then_open` (empty AAD, fixed counter 0, realistic plaintext). AAD path exercised indirectly via `aad_mismatch_fails`. Missing: empty plaintext, large/max-size plaintext, non-zero counter values as the sealing side, and explicit verification of ciphertext bytes (tests only check length and roundtrip). Edge cases like counter=u64::MAX are absent. | [PARTIAL] Has a `///` block describing purpose and nonce construction rationale, and briefly mentions AAD semantics. However, none of the four parameters (`key`, `counter`, `aad`, `plaintext`) are individually documented, the return type semantics are not described, and there is no `# Examples` section as expected for a public API function."
+    },
+    {
+      "name": "open",
+      "kind": "function",
+      "exported": true,
+      "line_start": 33,
+      "line_end": 45,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "DEAD",
+      "duplication": "UNIQUE",
+      "tests": "NONE",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 85,
+      "detail": "[DEAD] Exported core AEAD decryption function with 0 runtime/type-only importers. Primary public API of rustguard-crypto library; likely consumed by downstream crates. Pattern matches Known False Positives. | [UNIQUE] Decrypts with ChaCha20-Poly1305, returns Option<Vec<u8>>. RAG shows similarity to open in noise.rs (0.891, FFI vs library), xopen (0.863, different cipher), open_to (0.758, different return strategy). Different contracts—xopen uses XChaCha20, open_to uses mutable buffer. | [OK] Nonce reconstructed identically to seal(). Authentication failures are correctly mapped to None via .ok(). No issues. | [LEAN] Direct mirror of `seal` for decryption. Returns Option to signal auth failure without panicking. Clean and minimal. | [GOOD] Five tests exercise `open` thoroughly: happy path (seal_then_open), wrong key (wrong_key_fails), wrong counter (wrong_counter_fails), bit-flipped ciphertext (tampered_ciphertext_fails), and AAD mismatch (aad_mismatch_fails). All four primary authentication-failure modes are covered. Minor gap: no test for ciphertext shorter than AEAD_TAG_LEN, but the core contract is well validated. | [PARTIAL] Has a `///` block with a purpose line and a useful `Returns None` explanation covering three failure conditions. However, no individual parameter descriptions exist, and no `# Examples` section is provided, which is expected for public decryption APIs."
+    },
+    {
+      "name": "xseal",
+      "kind": "function",
+      "exported": true,
+      "line_start": 48,
+      "line_end": 54,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "DEAD",
+      "duplication": "UNIQUE",
+      "tests": "NONE",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 85,
+      "detail": "[DEAD] Exported extended-nonce encryption function with 0 runtime/type-only importers. Public API variant in library crate; no local usage. Likely false positive. | [UNIQUE] Encrypts with XChaCha20-Poly1305 (24-byte nonce), returns Vec<u8>. RAG shows 0.820 similarity to seal but uses different cipher and explicit nonce parameter. Semantic contract differs—designed for cookie encryption with fixed nonce, not counter-based transport. | [OK] XChaCha20-Poly1305 path is correct. XNonce::from_slice is safe because nonce is &[u8; 24] and XNonce is 24 bytes. | [LEAN] XChaCha20 variant is protocol-mandated for WireGuard cookie encryption (24-byte random nonce). A separate function rather than a generic abstraction is the correct, minimal choice here. | [NONE] No test in the inline `#[cfg(test)]` module covers `xseal`. Used for WireGuard cookie encryption — a security-critical path — with zero test coverage. Neither happy path nor authentication-failure scenarios are tested. | [PARTIAL] Has a single-line `///` comment noting the algorithm, nonce size, and intended use (cookie encryption). No parameter descriptions, no return value description, and no `# Examples` section. The doc is minimal but not absent."
+    },
+    {
+      "name": "xopen",
+      "kind": "function",
+      "exported": true,
+      "line_start": 57,
+      "line_end": 63,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "DEAD",
+      "duplication": "UNIQUE",
+      "tests": "NONE",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 85,
+      "detail": "[DEAD] Exported extended-nonce decryption function with 0 runtime/type-only importers. Public API variant in library crate; no local usage. Likely false positive. | [UNIQUE] Decrypts with XChaCha20-Poly1305 (24-byte nonce), returns Option<Vec<u8>>. RAG shows 0.863 similarity to open and 0.793 to open in noise.rs, but uses different cipher (XChaCha20 vs ChaCha20). Semantically distinct—handles explicit 24-byte nonces, not counter-derived 12-byte nonces. | [OK] Symmetric counterpart to xseal. Authentication failure correctly returns None. | [LEAN] Symmetric counterpart to `xseal` for cookie decryption. Same justification — protocol-required, no unnecessary abstraction. | [NONE] No test in the inline `#[cfg(test)]` module covers `xopen`. The XChaCha20-Poly1305 decryption path (used for cookie decryption) has zero test coverage; roundtrip, wrong key, tampered data, and nonce mismatch are all untested. | [PARTIAL] Has a single-line `///` comment noting the algorithm, nonce size, and use case. Missing parameter descriptions, return-value semantics (e.g., when `None` is returned), and a `# Examples` section expected for public APIs."
+    },
+    {
+      "name": "seal_to",
+      "kind": "function",
+      "exported": true,
+      "line_start": 68,
+      "line_end": 78,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "DEAD",
+      "duplication": "UNIQUE",
+      "tests": "NONE",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 80,
+      "detail": "[DEAD] Exported in-place encryption function with 0 runtime/type-only importers. Zero-allocation API variant in crypto library; no local usage. Likely false positive. | [UNIQUE] In-place encryption: copies plaintext to buffer, encrypts, appends tag. Returns usize (total length). RAG shows 0.762/0.758 similarity to seal/kmod operations, but different contract—uses provided mutable buffer instead of allocating Vec<u8>. Zero-allocation design. | [OK] Preconditions (buf >= plaintext.len() + 16) are documented and panicking on contract violation is idiomatic for hot-path Rust. The encrypt_in_place_detached + manual tag append is correct. Empty AAD matches WireGuard transport usage. | [LEAN] Zero-allocation in-place encryption for the transport hot path. In a VPN daemon encrypting every outbound packet, avoiding heap allocation per packet is a legitimate, necessary optimization, not premature complexity. | [NONE] No test in the inline `#[cfg(test)]` module covers `seal_to`. The zero-allocation in-place encryption path is entirely untested: output length, correct tag placement in buf, and buffer-size semantics are all unverified. | [PARTIAL] Has a three-line `///` block describing purpose, buffer size precondition, and the zero-allocation property. Lacks individual parameter documentation, missing a `# Panics` section despite calling `.expect()` unconditionally, and no `# Examples` section."
+    },
+    {
+      "name": "open_to",
+      "kind": "function",
+      "exported": true,
+      "line_start": 83,
+      "line_end": 96,
+      "correction": "NEEDS_FIX",
+      "overengineering": "LEAN",
+      "utility": "DEAD",
+      "duplication": "UNIQUE",
+      "tests": "NONE",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 80,
+      "detail": "[DEAD] Exported in-place decryption function with 0 runtime/type-only importers. Zero-allocation API variant in crypto library; no local usage. Likely false positive. | [UNIQUE] In-place decryption: validates length, decrypts in buffer, returns plaintext length. RAG shows 0.783/0.758 similarity to open variants, but different contract—takes mutable buffer instead of returning Option<Vec<u8>>. Zero-allocation design with length-based output. | [NEEDS_FIX] The function already performs partial input validation (ct_len < AEAD_TAG_LEN → None), signalling defensive intent. However it never checks ct_len > buf.len(). If a caller passes ct_len larger than buf's actual length, buf[..ct_len] panics instead of returning None. Because open_to processes potentially adversarial ciphertext and advertises an Option return for failure, the missing upper-bound guard is an inconsistency that causes a crash rather than a graceful failure. | [LEAN] Zero-allocation in-place decryption mirroring `seal_to`. The early guard for `ct_len < AEAD_TAG_LEN` is a minimal, correct safety check. Justified for the same hot-path reasons as `seal_to`. | [NONE] No test in the inline `#[cfg(test)]` module covers `open_to`. The short-buffer guard (`ct_len < AEAD_TAG_LEN → None`), the happy-path decryption, and authentication-failure behavior are all completely untested. | [PARTIAL] Has a three-line `///` block describing purpose, buffer in/out contract, and zero-allocation guarantee. Missing formal parameter descriptions (e.g., semantics of `ct_len`), no `# Panics` for the internal `expect`, and no `# Examples` section required for public API."
+    },
+    {
+      "name": "build_nonce",
+      "kind": "function",
+      "exported": false,
+      "line_start": 99,
+      "line_end": 103,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "WEAK",
+      "documentation": "DOCUMENTED",
+      "confidence": 80,
+      "detail": "[USED] Non-exported private function called 4 times locally: seal (L22), open (L39), seal_to (L73), open_to (L86). Required helper for WireGuard nonce construction. | [UNIQUE] Helper: constructs WireGuard nonce (4 zero bytes || 8-byte LE counter). No similar functions reported by RAG. Private utility with specific WireGuard nonce format. | [OK] Follows the WireGuard spec exactly: 96-bit nonce = 32 zero bits || 64-bit little-endian counter (section 5.4.6 of the WireGuard paper). nonce[4..] receives the 8 LE counter bytes, bytes 0-3 remain zero. | [LEAN] Four-line private helper encoding exactly the WireGuard nonce layout (4 zero bytes || 8-byte LE counter). Factoring it out avoids duplication across `seal`, `open`, `seal_to`, and `open_to`. Appropriately scoped. | [WEAK] Private helper indirectly exercised by all five inline tests via `seal`/`open`. However, the WireGuard-specific nonce layout (4 zero bytes prepended to 8-byte LE counter) is never explicitly verified — no test inspects the nonce bytes or confirms the encoding of counter=1 vs counter=0. The `wrong_counter_fails` test only proves different counters produce different nonces, not that the byte layout matches the WireGuard spec. | [DOCUMENTED] Private function with a clear, precise `///` comment describing the exact WireGuard nonce wire format (4 zero bytes || 8-byte LE counter). For a private helper with a descriptive name, this level of documentation is appropriate and complete. No `# Examples` required."
+    }
+  ],
+  "actions": [
+    {
+      "id": 1,
+      "description": "MAX_PACKET_SIZE uses 1500 in its expression but the doc comment documents the limit as 'MTU 1420 + tag'. Change the constant to 1420 + AEAD_TAG_LEN (= 1436) to match the stated WireGuard transport MTU, or update the comment to reflect that 1500 is intentional (e.g. Ethernet MTU before WireGuard header subtraction). As-is, callers using this constant for size validation will accept oversized packets.",
+      "severity": "medium",
+      "effort": "small",
+      "category": "quickwin",
+      "target_symbol": null,
+      "target_lines": "L10",
+      "source": "correction"
+    },
+    {
+      "id": 2,
+      "description": "open_to must guard against ct_len > buf.len() before indexing buf[..ct_len]. Add `if ct_len > buf.len() { return None; }` immediately after the AEAD_TAG_LEN check to prevent a panic when adversarial or malformed inputs arrive with an inflated ct_len.",
+      "severity": "high",
+      "effort": "small",
+      "category": "quickwin",
+      "target_symbol": null,
+      "target_lines": "L86",
+      "source": "correction"
+    },
+    {
+      "id": 3,
+      "description": "Remove dead code: `AEAD_TAG_LEN` is exported but unused",
+      "severity": "high",
+      "effort": "trivial",
+      "category": "quickwin",
+      "source": "utility",
+      "target_symbol": "AEAD_TAG_LEN",
+      "target_lines": "L7-L7"
+    },
+    {
+      "id": 4,
+      "description": "Add JSDoc documentation for exported symbol: `AEAD_TAG_LEN`",
+      "severity": "medium",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "AEAD_TAG_LEN",
+      "target_lines": "L7-L7"
+    },
+    {
+      "id": 5,
+      "description": "Remove dead code: `MAX_PACKET_SIZE` is exported but unused",
+      "severity": "high",
+      "effort": "trivial",
+      "category": "quickwin",
+      "source": "utility",
+      "target_symbol": "MAX_PACKET_SIZE",
+      "target_lines": "L10-L10"
+    },
+    {
+      "id": 6,
+      "description": "Add JSDoc documentation for exported symbol: `MAX_PACKET_SIZE`",
+      "severity": "medium",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "MAX_PACKET_SIZE",
+      "target_lines": "L10-L10"
+    },
+    {
+      "id": 7,
+      "description": "Remove dead code: `seal` is exported but unused",
+      "severity": "high",
+      "effort": "trivial",
+      "category": "quickwin",
+      "source": "utility",
+      "target_symbol": "seal",
+      "target_lines": "L16-L28"
+    },
+    {
+      "id": 8,
+      "description": "Add JSDoc documentation for exported symbol: `seal`",
+      "severity": "medium",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "seal",
+      "target_lines": "L16-L28"
+    },
+    {
+      "id": 9,
+      "description": "Remove dead code: `open` is exported but unused",
+      "severity": "high",
+      "effort": "trivial",
+      "category": "quickwin",
+      "source": "utility",
+      "target_symbol": "open",
+      "target_lines": "L33-L45"
+    },
+    {
+      "id": 10,
+      "description": "Add JSDoc documentation for exported symbol: `open`",
+      "severity": "medium",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "open",
+      "target_lines": "L33-L45"
+    },
+    {
+      "id": 11,
+      "description": "Remove dead code: `xseal` is exported but unused",
+      "severity": "high",
+      "effort": "trivial",
+      "category": "quickwin",
+      "source": "utility",
+      "target_symbol": "xseal",
+      "target_lines": "L48-L54"
+    },
+    {
+      "id": 12,
+      "description": "Add JSDoc documentation for exported symbol: `xseal`",
+      "severity": "medium",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "xseal",
+      "target_lines": "L48-L54"
+    },
+    {
+      "id": 13,
+      "description": "Remove dead code: `xopen` is exported but unused",
+      "severity": "high",
+      "effort": "trivial",
+      "category": "quickwin",
+      "source": "utility",
+      "target_symbol": "xopen",
+      "target_lines": "L57-L63"
+    },
+    {
+      "id": 14,
+      "description": "Add JSDoc documentation for exported symbol: `xopen`",
+      "severity": "medium",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "xopen",
+      "target_lines": "L57-L63"
+    },
+    {
+      "id": 15,
+      "description": "Remove dead code: `seal_to` is exported but unused",
+      "severity": "high",
+      "effort": "trivial",
+      "category": "quickwin",
+      "source": "utility",
+      "target_symbol": "seal_to",
+      "target_lines": "L68-L78"
+    },
+    {
+      "id": 16,
+      "description": "Add JSDoc documentation for exported symbol: `seal_to`",
+      "severity": "medium",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "seal_to",
+      "target_lines": "L68-L78"
+    },
+    {
+      "id": 17,
+      "description": "Remove dead code: `open_to` is exported but unused",
+      "severity": "high",
+      "effort": "trivial",
+      "category": "quickwin",
+      "source": "utility",
+      "target_symbol": "open_to",
+      "target_lines": "L83-L96"
+    },
+    {
+      "id": 18,
+      "description": "Add JSDoc documentation for exported symbol: `open_to`",
+      "severity": "medium",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "open_to",
+      "target_lines": "L83-L96"
+    }
+  ],
+  "file_level": {
+    "unused_imports": [],
+    "circular_dependencies": [],
+    "general_notes": "Best practices score: 7.5/10 (0 FAIL, 3 WARN, 9 PASS)"
+  },
+  "best_practices": {
+    "score": 7.5,
+    "rules": [
+      {
+        "rule_id": 1,
+        "rule_name": "No unwrap in production code",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No `.unwrap()` calls are present. All fallible operations use `.expect(\"…\")` (explicitly permitted by this rule) or `.ok()` conversions. Test module uses `.expect()` which is allowed per rule exception.",
+        "lines": "L26, L52, L72"
+      },
+      {
+        "rule_id": 2,
+        "rule_name": "No unsafe blocks without justification",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No `unsafe` blocks anywhere in the file. All operations go through safe abstractions from the `chacha20poly1305` crate."
+      },
+      {
+        "rule_id": 3,
+        "rule_name": "Proper error handling with Result/Option",
+        "status": "WARN",
+        "severity": "HIGH",
+        "detail": "`seal()`, `xseal()`, and `seal_to()` return `Vec<u8>`/`usize` directly and convert encrypt errors to panics via `.expect()`, silencing them from the caller's perspective. A library crate should surface errors via `Result<Vec<u8>, AeadError>` so callers can handle them. The decrypt paths (`open`, `open_to`, `xopen`) correctly use `Option` for auth failures and `.ok()` for conversion.",
+        "lines": "L17-L28, L47-L55, L65-L77"
+      },
+      {
+        "rule_id": 4,
+        "rule_name": "Derive common traits on public types",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "No public structs or enums are defined in this file. Only public constants and functions are exported. Rule is not applicable."
+      },
+      {
+        "rule_id": 5,
+        "rule_name": "Lifetime annotations explicit where needed",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "Lifetime elision is correctly applied throughout. All function parameters are independent input references, and all return types are owned (`Vec<u8>`, `Option<Vec<u8>>`, `usize`, `Option<usize>`). No output lifetimes are elided — elision is unambiguous here."
+      },
+      {
+        "rule_id": 6,
+        "rule_name": "Clippy idioms",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "Code is idiomatic: `split_at_mut` is used correctly for zero-copy in-place decryption, `copy_from_slice` is preferred over manual loops, no unnecessary `clone()` calls, and no manual iterator loops where chaining would be cleaner."
+      },
+      {
+        "rule_id": 7,
+        "rule_name": "No panic in library/production code",
+        "status": "WARN",
+        "severity": "CRITICAL",
+        "detail": "This is a library crate (`rustguard-crypto`). Three public functions — `seal()` (L26), `xseal()` (L52), and `seal_to()` (L72) — call `.expect()`, which panics on error. While ChaCha20-Poly1305 encryption with correctly typed fixed-size keys should never fail in practice, a library must not impose panics on its callers. The idiomatic fix is to return `Result<Vec<u8>, chacha20poly1305::Error>` and use `?`. No literal `panic!` macro is used, so this is WARN rather than FAIL.",
+        "lines": "L26, L52, L72"
+      },
+      {
+        "rule_id": 8,
+        "rule_name": "Module organization",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "File is correctly placed in `rustguard-crypto/src/aead.rs` as an AEAD-specific module within the crypto crate. The project structure shows a clean `lib.rs` alongside peer modules (`blake2s.rs`, `x25519.rs`, `tai64n.rs`). Module hierarchy follows a standard flat-within-crate convention appropriate for a focused crypto library."
+      },
+      {
+        "rule_id": 9,
+        "rule_name": "Documentation comments on public items",
+        "status": "WARN",
+        "severity": "MEDIUM",
+        "detail": "`AEAD_TAG_LEN` (L7) is a public constant with no `///` documentation comment. All six public functions (`seal`, `open`, `xseal`, `xopen`, `seal_to`, `open_to`) and `MAX_PACKET_SIZE` are well-documented. One public constant is missing a doc comment.",
+        "lines": "L7"
+      },
+      {
+        "rule_id": 10,
+        "rule_name": "No hardcoded secrets or credentials",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No hardcoded secrets or credentials. Test keys (`[0x42u8; 32]`, `[0x43u8; 32]`) are clearly test-only fixtures confined to the `#[cfg(test)]` module."
+      },
+      {
+        "rule_id": 11,
+        "rule_name": "Memory safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "No `mem::forget`, no raw pointer arithmetic, no manual `Drop` implementations. The in-place operations in `seal_to` and `open_to` use safe slice indexing with explicit length bounds checks (`ct_len < AEAD_TAG_LEN` guard at L87). Buffer aliasing is handled correctly via `split_at_mut`."
+      },
+      {
+        "rule_id": 12,
+        "rule_name": "Concurrency safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "All functions are fully stateless — each call creates a fresh `ChaCha20Poly1305` or `XChaCha20Poly1305` instance on the stack. No global mutable state, no shared references, no `Arc`/`Mutex` needed. Functions are implicitly `Send + Sync` safe."
+      }
+    ],
+    "suggestions": [
+      {
+        "description": "Return `Result` from `seal` instead of panicking, so callers can handle encryption errors without risking a library-triggered panic.",
+        "before": "pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {\n    let cipher = ChaCha20Poly1305::new(key.into());\n    let nonce = build_nonce(counter);\n    cipher\n        .encrypt(&nonce, Payload { msg: plaintext, aad })\n        .expect(\"encryption failed\")\n}",
+        "after": "pub fn seal(\n    key: &[u8; 32],\n    counter: u64,\n    aad: &[u8],\n    plaintext: &[u8],\n) -> Result<Vec<u8>, chacha20poly1305::Error> {\n    let cipher = ChaCha20Poly1305::new(key.into());\n    let nonce = build_nonce(counter);\n    cipher.encrypt(&nonce, Payload { msg: plaintext, aad })\n}"
+      },
+      {
+        "description": "Add a `///` doc comment to the public constant `AEAD_TAG_LEN` to document its role and value.",
+        "before": "pub const AEAD_TAG_LEN: usize = 16;",
+        "after": "/// Length in bytes of the Poly1305 authentication tag appended by ChaCha20-Poly1305 encryption.\npub const AEAD_TAG_LEN: usize = 16;"
+      },
+      {
+        "description": "Return `Result` from `seal_to` so in-place encryption errors are surfaced to callers instead of panicking inside a library function.",
+        "before": "pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {\n    ...\n    let tag = cipher\n        .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])\n        .expect(\"encryption failed\");\n    ...\n}",
+        "after": "pub fn seal_to(\n    key: &[u8; 32],\n    counter: u64,\n    plaintext: &[u8],\n    buf: &mut [u8],\n) -> Result<usize, chacha20poly1305::Error> {\n    ...\n    let tag = cipher\n        .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])?;\n    ...\n    Ok(len + AEAD_TAG_LEN)\n}"
+      }
+    ]
+  },
+  "docs_coverage": {
+    "concepts": [],
+    "score_pct": 44
+  },
+  "axis_meta": {
+    "utility": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.03585605,
+      "duration_ms": 37188
+    },
+    "duplication": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.04888835,
+      "duration_ms": 41238
+    },
+    "correction": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.18376625000000002,
+      "duration_ms": 96344
+    },
+    "overengineering": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.07500675,
+      "duration_ms": 29785
+    },
+    "tests": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.10103975,
+      "duration_ms": 40186
+    },
+    "best_practices": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.21787749999999997,
+      "duration_ms": 115168
+    },
+    "documentation": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.12274499999999999,
+      "duration_ms": 60491
+    }
+  }
+}
+```
+
+## Source code of `rustguard-crypto/src/aead.rs`
+
+```typescript
+use alloc::vec::Vec;
+use chacha20poly1305::{
+    aead::{Aead, AeadInPlace, KeyInit, Payload},
+    ChaCha20Poly1305, Nonce, XChaCha20Poly1305, XNonce,
+};
+
+pub const AEAD_TAG_LEN: usize = 16;
+
+/// Maximum WireGuard transport payload (MTU 1420 + tag).
+pub const MAX_PACKET_SIZE: usize = 1500 + AEAD_TAG_LEN;
+
+/// Encrypt plaintext with ChaCha20-Poly1305.
+///
+/// WireGuard uses a 64-bit counter as nonce (padded to 96 bits with 4 zero bytes).
+/// AAD is additional authenticated data (empty for transport, used in handshake).
+pub fn seal(key: &[u8; 32], counter: u64, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .encrypt(
+            &nonce,
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .expect("encryption failed")
+}
+
+/// Decrypt ciphertext with ChaCha20-Poly1305.
+///
+/// Returns None if authentication fails (wrong key, tampered data, wrong nonce).
+pub fn open(key: &[u8; 32], counter: u64, aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    cipher
+        .decrypt(
+            &nonce,
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .ok()
+}
+
+/// Encrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie encryption.
+pub fn xseal(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .encrypt(xnonce, Payload { msg: plaintext, aad })
+        .expect("xchacha encryption failed")
+}
+
+/// Decrypt with XChaCha20-Poly1305 (24-byte nonce). Used for cookie decryption.
+pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let xnonce = XNonce::from_slice(nonce);
+    cipher
+        .decrypt(xnonce, Payload { msg: ciphertext, aad })
+        .ok()
+}
+
+/// Encrypt in place: copies plaintext to buf, appends tag. Returns total length.
+/// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
+/// Zero allocations.
+pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let len = plaintext.len();
+    buf[..len].copy_from_slice(plaintext);
+    let tag = cipher
+        .encrypt_in_place_detached(&nonce, &[], &mut buf[..len])
+        .expect("encryption failed");
+    buf[len..len + AEAD_TAG_LEN].copy_from_slice(&tag);
+    len + AEAD_TAG_LEN
+}
+
+/// Decrypt in place: decrypts ciphertext in buf, returns plaintext length.
+/// buf contains ciphertext + tag on input, plaintext on output.
+/// Zero allocations.
+pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+    if ct_len < AEAD_TAG_LEN {
+        return None;
+    }
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let nonce = build_nonce(counter);
+    let pt_len = ct_len - AEAD_TAG_LEN;
+    let (data, tag_bytes) = buf[..ct_len].split_at_mut(pt_len);
+    let tag = chacha20poly1305::Tag::from_slice(tag_bytes);
+    cipher
+        .decrypt_in_place_detached(&nonce, &[], data, tag)
+        .ok()?;
+    Some(pt_len)
+}
+
+/// WireGuard nonce: 4 bytes of zeros || 8 bytes little-endian counter.
+fn build_nonce(counter: u64) -> Nonce {
+    let mut nonce = [0u8; 12];
+    nonce[4..].copy_from_slice(&counter.to_le_bytes());
+    Nonce::from(nonce)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seal_then_open() {
+        let key = [0x42u8; 32];
+        let plaintext = b"wireguard is elegant";
+        let aad = b"";
+
+        let ciphertext = seal(&key, 0, aad, plaintext);
+        assert_eq!(ciphertext.len(), plaintext.len() + AEAD_TAG_LEN);
+
+        let decrypted = open(&key, 0, aad, &ciphertext).expect("decryption failed");
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn wrong_key_fails() {
+        let key = [0x42u8; 32];
+        let wrong_key = [0x43u8; 32];
+
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&wrong_key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"", b"secret");
+        assert!(open(&key, 1, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn tampered_ciphertext_fails() {
+        let key = [0x42u8; 32];
+        let mut ciphertext = seal(&key, 0, b"", b"secret");
+        ciphertext[0] ^= 0xff;
+        assert!(open(&key, 0, b"", &ciphertext).is_none());
+    }
+
+    #[test]
+    fn aad_mismatch_fails() {
+        let key = [0x42u8; 32];
+        let ciphertext = seal(&key, 0, b"correct", b"secret");
+        assert!(open(&key, 0, b"wrong", &ciphertext).is_none());
+    }
+}
+
+```
+
+## Instructions
+
+Deliberate ONLY symbols with findings — skip clean symbols. For each symbol, address ALL its axis findings together in one entry (e.g., if a symbol is DEAD + NEEDS_FIX, deliberate both in the same entry). Recompute the verdict.
+
+Rules:
+- Only include axes with findings in original/deliberated (omit clean axes)
+- Do NOT add new findings, symbols, or actions
+- Protect ERROR (require ≥ 95 confidence to downgrade)
+- Reclassification requires confidence ≥ 85
+- Copy original values when you agree with the finding
+
+## System (init)
+
+**Model:** claude-opus-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+{
+  "verdict": "NEEDS_REFACTOR",
+  "symbols": [
+    {
+      "name": "AEAD_TAG_LEN",
+      "original": { "utility": "DEAD", "tests": "NONE", "documentation": "UNDOCUMENTED", "confidence": 95 },
+      "deliberated": { "utility": "USED", "tests": "GOOD", "documentation": "UNDOCUMENTED", "confidence": 93 },
+      "reasoning": "Utility DEAD→USED: This is a `pub const` in a library crate (`rustguard-crypto`). It is the fundamental tag length constant meant for downstream consumers. The evaluator itself noted it matches Known False Positives. Zero in-crate importers is expected for a library public API constant. Tests NONE→GOOD: Pure compile-time constant with no runtime behavior; indirectly validated in `seal_then_open` assertion (`ciphertext.len() == plaintext.len() + AEAD_TAG_LEN`). No dedicated test needed. Documentation UNDOCUMENTED confirmed: line 7 has no `///` comment, so UNDOCUMENTED is correct."
+    },
+    {
+      "name": "MAX_PACKET_SIZE",
+      "original": { "correction": "NEEDS_FIX", "utility": "DEAD", "tests": "NONE", "documentation": "UNDOCUMENTED", "confidence": 82 },
+      "deliberated": { "correction": "NEEDS_FIX", "utility": "USED", "tests": "GOOD", "documentation": "PARTIAL", "confidence": 88 },
+      "reasoning": "Correction NEEDS_FIX confirmed: the doc comment on L9 says 'MTU 1420 + tag' but the expression computes `1500 + AEAD_TAG_LEN = 1516`, a clear mismatch (~80 bytes difference). Either the doc or the value is wrong. Utility DEAD→USED: library public constant for downstream consumption, same false positive pattern as AEAD_TAG_LEN. Tests NONE→GOOD: compile-time constant with no runtime behavior, no dedicated test required. Documentation UNDOCUMENTED→PARTIAL: line 9 has a `///` doc comment present (`/// Maximum WireGuard transport payload (MTU 1420 + tag).`), so UNDOCUMENTED is incorrect. Reclassified to PARTIAL due to the inaccurate MTU value in the doc."
+    },
+    {
+      "name": "seal",
+      "original": { "utility": "DEAD", "tests": "NONE", "documentation": "UNDOCUMENTED", "confidence": 85 },
+      "deliberated": { "utility": "USED", "tests": "WEAK", "documentation": "PARTIAL", "confidence": 90 },
+      "reasoning": "Utility DEAD→USED: primary public encryption API of the library crate, consumed by downstream crates. Tests NONE→WEAK: `seal` is directly called in all 5 test functions (seal_then_open, wrong_key_fails, wrong_counter_fails, tampered_ciphertext_fails, aad_mismatch_fails), so NONE is factually incorrect. Reclassified to WEAK since edge cases (empty plaintext, large payloads, non-zero counter as primary input) are missing. Documentation UNDOCUMENTED→PARTIAL: has a multi-line `///` doc block on L12-15 describing purpose, nonce construction, and AAD semantics. Missing param-level docs and examples, hence PARTIAL not DOCUMENTED."
+    },
+    {
+      "name": "open",
+      "original": { "utility": "DEAD", "tests": "NONE", "documentation": "UNDOCUMENTED", "confidence": 85 },
+      "deliberated": { "utility": "USED", "tests": "GOOD", "documentation": "PARTIAL", "confidence": 92 },
+      "reasoning": "Utility DEAD→USED: primary public decryption API of the library crate. Tests NONE→GOOD: five tests thoroughly exercise `open` — happy path, wrong key, wrong counter, tampered ciphertext, and AAD mismatch. All four primary authentication-failure modes are covered. NONE is clearly wrong. Documentation UNDOCUMENTED→PARTIAL: has a `///` block on L31-33 describing purpose and three failure conditions for `None` return. Missing param-level docs and examples, hence PARTIAL."
+    },
+    {
+      "name": "xseal",
+      "original": { "utility": "DEAD", "tests": "NONE", "documentation": "UNDOCUMENTED", "confidence": 85 },
+      "deliberated": { "utility": "USED", "tests": "NONE", "documentation": "PARTIAL", "confidence": 90 },
+      "reasoning": "Utility DEAD→USED: public API variant for WireGuard cookie encryption, consumed by downstream crates. Tests NONE confirmed: no test covers xseal — this is a genuine gap on a security-critical path. Documentation UNDOCUMENTED→PARTIAL: has a single-line `///` on L48 noting algorithm, nonce size, and use case. Minimal but present, so UNDOCUMENTED is incorrect."
+    },
+    {
+      "name": "xopen",
+      "original": { "utility": "DEAD", "tests": "NONE", "documentation": "UNDOCUMENTED", "confidence": 85 },
+      "deliberated": { "utility": "USED", "tests": "NONE", "documentation": "PARTIAL", "confidence": 90 },
+      "reasoning": "Utility DEAD→USED: public API variant for WireGuard cookie decryption, consumed by downstream crates. Tests NONE confirmed: no test covers xopen — roundtrip, wrong key, tampered data, and nonce mismatch all untested. Documentation UNDOCUMENTED→PARTIAL: has a single-line `///` on L57 noting algorithm, nonce size, and use case. Present but lacks param docs and return semantics."
+    },
+    {
+      "name": "seal_to",
+      "original": { "utility": "DEAD", "tests": "NONE", "documentation": "UNDOCUMENTED", "confidence": 80 },
+      "deliberated": { "utility": "USED", "tests": "NONE", "documentation": "PARTIAL", "confidence": 90 },
+      "reasoning": "Utility DEAD→USED: zero-allocation public API for hot-path transport encryption, consumed by downstream crates. Tests NONE confirmed: no test covers seal_to — output length, correct tag placement, and buffer semantics all unverified. Documentation UNDOCUMENTED→PARTIAL: has a three-line `///` block on L66-68 describing purpose, buffer precondition, and zero-allocation property. Missing `# Panics` section for `.expect()` and param-level docs."
+    },
+    {
+      "name": "open_to",
+      "original": { "correction": "NEEDS_FIX", "utility": "DEAD", "tests": "NONE", "documentation": "UNDOCUMENTED", "confidence": 80 },
+      "deliberated": { "correction": "NEEDS_FIX", "utility": "USED", "tests": "NONE", "documentation": "PARTIAL", "confidence": 88 },
+      "reasoning": "Correction NEEDS_FIX confirmed: the function guards `ct_len < AEAD_TAG_LEN` (defensive intent) but never checks `ct_len > buf.len()`. Since `buf[..ct_len]` on L91 will panic if ct_len exceeds buf length, and this function processes potentially adversarial input while advertising Option return, the missing upper-bound guard is a genuine inconsistency. Utility DEAD→USED: zero-allocation public API for hot-path transport decryption. Tests NONE confirmed: completely untested. Documentation UNDOCUMENTED→PARTIAL: has a three-line `///` block on L81-83 describing purpose, buffer contract, and zero-allocation guarantee."
+    },
+    {
+      "name": "build_nonce",
+      "original": { "tests": "WEAK", "confidence": 80 },
+      "deliberated": { "tests": "WEAK", "confidence": 85 },
+      "reasoning": "Tests WEAK confirmed: build_nonce is indirectly exercised by all 5 tests via seal/open, but no test explicitly verifies the WireGuard nonce byte layout (4 zero bytes || 8-byte LE counter). The `wrong_counter_fails` test only proves different counters produce different ciphertexts, not that the nonce encoding matches the spec. WEAK is appropriate."
+    }
+  ],
+  "removed_actions": [3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+  "reasoning": "Major reclassifications: (1) ALL DEAD→USED: Every exported symbol was flagged DEAD due to zero in-crate importers, but this is `rustguard-crypto`, a library crate. All public functions and constants constitute the crate's public API consumed by downstream crates (e.g., `rustguard` main crate). This is a textbook false positive for library exports. All 8 'Remove dead code' actions (3,5,7,9,11,13,15,17) removed. (2) UNDOCUMENTED→PARTIAL for 7 symbols: All public functions have `///` doc comments in the source — the UNDOCUMENTED classification was factually wrong. Only AEAD_TAG_LEN (L7) truly lacks a doc comment. Documentation actions 6,8,10,12,14,16,18 removed as they say 'Add JSDoc documentation' for symbols that already have Rust doc comments (action 4 retained for AEAD_TAG_LEN which genuinely has none). (3) Tests NONE→corrected for seal (WEAK, 5 tests use it), open (GOOD, 5 tests with comprehensive failure modes), AEAD_TAG_LEN/MAX_PACKET_SIZE (GOOD, compile-time constants). xseal, xopen, seal_to, open_to remain NONE — genuine test gaps on security-critical paths. Two confirmed code issues remain: MAX_PACKET_SIZE doc/code mismatch (action 1) and open_to missing ct_len>buf.len() guard (action 2). Verdict remains NEEDS_REFACTOR due to the open_to bounds check issue and untested x-variant and in-place functions."
+}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.2882 | **Duration:** 139.2s
+

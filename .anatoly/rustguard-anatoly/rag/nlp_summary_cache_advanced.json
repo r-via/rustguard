@@ -1,0 +1,2408 @@
+{
+  "entries": {
+    "635c3cbba21e2686": {
+      "bodyHash": "16fa02f81f1dfe7c",
+      "summary": {
+        "summary": "Entry point that parses command-line arguments and dispatches to the appropriate command handler. Routes 8 different commands (up, serve, join, open, close, status, genkey, pubkey) with error handling for unknown commands.",
+        "docSummary": "The main entry point for the rustguard CLI. It parses command-line arguments and routes them to the appropriate command handler (up, serve, join, open, close, status, genkey, pubkey). Exits with code 1 if no command is provided or if the command is unrecognized.",
+        "keyConcepts": [
+          "command-dispatch",
+          "cli-entry-point",
+          "argument-parsing",
+          "error-handling"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "067f61a05864cbf9": {
+      "bodyHash": "d128e368761be1ec",
+      "summary": {
+        "summary": "Prints usage information and command help text to stderr. Displays all available commands with their usage syntax.",
+        "docSummary": "Prints the rustguard CLI usage information to stderr, listing all available commands and their syntax. Used to inform users of correct command-line usage.",
+        "keyConcepts": [
+          "help-text",
+          "error-output",
+          "user-feedback"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "97197cc984a4b24e": {
+      "bodyHash": "2f06d0ac546ccc11",
+      "summary": {
+        "summary": "Brings up a WireGuard tunnel by reading a configuration file and passing it to the daemon's tunnel module. Handles config parsing errors and tunnel startup failures.",
+        "docSummary": "Initiates a WireGuard tunnel in standard mode. Requires a config file path as an argument, reads the configuration, and starts the tunnel via rustguard_daemon::tunnel::run. Handles errors gracefully with user-friendly messages.",
+        "keyConcepts": [
+          "wireguard-tunnel",
+          "config-loading",
+          "daemon-execution",
+          "error-handling"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "635a62ad6df16e13": {
+      "bodyHash": "79e0701f49403f5c",
+      "summary": {
+        "summary": "Starts an enrollment server with configurable parameters including IP pool, token, port, XDP interface, queue count, and io_uring support. Parses command-line flags and validates required arguments.",
+        "docSummary": "Starts the rustguard enrollment server in a network pool. Accepts optional parameters for pool CIDR, authentication token, listening port, XDP interface, queue configuration, and io_uring support. Requires --pool and --token parameters.",
+        "keyConcepts": [
+          "enrollment-server",
+          "network-pool",
+          "argument-parsing",
+          "server-configuration"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "656a9b49cdd770ce": {
+      "bodyHash": "0a34efb170362104",
+      "summary": {
+        "summary": "Joins an existing rustguard server in zero-config mode by parsing endpoint and token arguments and invoking the enrollment client. Requires both endpoint and token.",
+        "docSummary": "Connects to an existing rustguard server in zero-config mode. Takes a server endpoint (IP:port) and authentication token as arguments, then initiates the enrollment client to establish the connection.",
+        "keyConcepts": [
+          "enrollment-client",
+          "zero-config",
+          "argument-parsing",
+          "server-join"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "3d3b77407e16de78": {
+      "bodyHash": "0f2bd48adc328eb1",
+      "summary": {
+        "summary": "Opens the enrollment window for a specified duration (in seconds) by sending an OPEN command to the enrollment control socket. Defaults to 60 seconds.",
+        "docSummary": "Opens the enrollment window for a specified duration (default 60 seconds). Sends an OPEN command with the duration to the enrollment control interface and prints the response.",
+        "keyConcepts": [
+          "enrollment-window",
+          "control-command",
+          "server-control",
+          "duration-config"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "8242e2022653bfdd": {
+      "bodyHash": "2643d4879989a155",
+      "summary": {
+        "summary": "Closes the enrollment window by sending a CLOSE command to the enrollment control socket. Simple single-purpose command with no arguments.",
+        "docSummary": "Closes the currently open enrollment window. Sends a CLOSE command to the enrollment control interface and prints the server response.",
+        "keyConcepts": [
+          "enrollment-window",
+          "control-command",
+          "server-control"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "ffa1f15155bb62f3": {
+      "bodyHash": "7ce1b6279edec23e",
+      "summary": {
+        "summary": "Queries and displays the current server status by sending a STATUS command to the enrollment control socket. Returns the server's current state.",
+        "docSummary": "Retrieves and displays the current enrollment server status. Sends a STATUS command to the enrollment control interface and prints the response.",
+        "keyConcepts": [
+          "server-status",
+          "control-command",
+          "server-control"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "c8770eab08fc9b9e": {
+      "bodyHash": "3832b4af7eba261f",
+      "summary": {
+        "summary": "Generates a new cryptographic private key using the rustguard_crypto module and outputs it in base64 encoding. Used for key pair generation.",
+        "docSummary": "Generates a new private key for WireGuard or enrollment purposes. Creates a random StaticSecret and outputs it in base64 format to stdout.",
+        "keyConcepts": [
+          "key-generation",
+          "cryptography",
+          "base64-encoding",
+          "secret-key"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "79c7cf08fdc46bbf": {
+      "bodyHash": "3c54ec12ad3d92bd",
+      "summary": {
+        "summary": "Reads a base64-encoded private key from stdin, decodes it, derives the corresponding public key, and outputs the public key in base64 format.",
+        "docSummary": "Derives a public key from a base64-encoded private key provided via stdin. Validates the key is 32 bytes, performs the key derivation, and outputs the public key in base64 format.",
+        "keyConcepts": [
+          "key-derivation",
+          "cryptography",
+          "base64-encoding",
+          "public-key"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "607f7a1f33a9c1a4": {
+      "bodyHash": "39a3cbdbc9daa8f8",
+      "summary": {
+        "summary": "Returns the current system timestamp for use as a baseline in elapsed time calculations.",
+        "docSummary": "Retrieves the current system timestamp. Typically paired with elapsed_since() to measure time intervals between operations.",
+        "keyConcepts": [
+          "time-measurement",
+          "timestamp"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "407636819f419b75": {
+      "bodyHash": "f4fd2de8dcf93b04",
+      "summary": {
+        "summary": "Calculates the time elapsed since a given timestamp. Returns a Duration object representing the time interval.",
+        "docSummary": "Computes elapsed time since a provided timestamp. This complements now() to measure time intervals and monitor operation durations.",
+        "keyConcepts": [
+          "duration-measurement",
+          "time-tracking"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "c0e999e3fe85468a": {
+      "bodyHash": "b95d1232cd3a381e",
+      "summary": {
+        "summary": "Serializes IPv4 or IPv6 socket addresses into binary form containing IP octets and big-endian port bytes.",
+        "docSummary": "Encodes network socket addresses into binary representation. Supports both IPv4 (6 bytes) and IPv6 (18 bytes) formats, combining address octets with the port in big-endian byte order.",
+        "keyConcepts": [
+          "serialization",
+          "network-address",
+          "binary-encoding"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "6b3562f036ce1b86": {
+      "bodyHash": "87bcf0e3a42369f5",
+      "summary": {
+        "summary": "Generates a 32-byte array of cryptographically secure random data for use as session keys or identifiers.",
+        "docSummary": "Produces cryptographically secure random bytes in a fixed 32-byte array. Suitable for generating session keys, authentication tokens, and other security-sensitive random material.",
+        "keyConcepts": [
+          "random-generation",
+          "cryptography",
+          "key-generation"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "311c44340af2f5fa": {
+      "bodyHash": "499c80f592dad324",
+      "summary": {
+        "summary": "Generates a 24-byte array of cryptographically secure random bytes for use as nonces in encryption and authentication protocols.",
+        "docSummary": "Produces a 24-byte cryptographic nonce. The fixed size aligns with standard nonce requirements in encryption and authentication schemes like AEAD cipher modes.",
+        "keyConcepts": [
+          "nonce-generation",
+          "cryptography",
+          "random-data"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "0063d8defe01a2c7": {
+      "bodyHash": "9a5a92c3a9cef8bd",
+      "summary": {
+        "summary": "Fills a mutable byte buffer with cryptographically secure random data. Used internally by random_bytes() and random_nonce() for flexible random data generation.",
+        "docSummary": "Low-level utility that populates a mutable byte slice with cryptographically secure random bytes. Powers higher-level random generation functions and enables custom-sized random buffers.",
+        "keyConcepts": [
+          "random-generation",
+          "buffer-mutation",
+          "cryptography"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "883ba9b24908505a": {
+      "bodyHash": "89d95f16413e5318",
+      "summary": {
+        "summary": "Performs constant-time comparison of the first 16 bytes of two slices to prevent timing-based side-channel attacks.",
+        "docSummary": "Implements secure byte comparison that prevents timing attacks. Compares a 16-byte array against another slice using constant-time operations, essential for cryptographic integrity checks.",
+        "keyConcepts": [
+          "constant-time-comparison",
+          "side-channel-protection",
+          "cryptography"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "59414815d6a56856": {
+      "bodyHash": "39a3cbdbc9daa8f8",
+      "summary": {
+        "summary": "Returns the current system time as a Timestamp for timing operations and performance measurements",
+        "docSummary": "Captures the current system time as a Timestamp. This utility function serves as the starting point for all elapsed time measurements, performance monitoring, and timeout tracking in the timing system.",
+        "keyConcepts": [
+          "time-capture",
+          "timestamp-creation",
+          "system-time",
+          "instant-snapshot"
+        ],
+        "behavioralProfile": "utility"
+      }
+    },
+    "9693a94f80e23328": {
+      "bodyHash": "f4fd2de8dcf93b04",
+      "summary": {
+        "summary": "Calculates the duration that has elapsed from a given Timestamp to the present moment",
+        "docSummary": "Computes the elapsed time from a given Timestamp to now. Essential for measuring operation duration, implementing timeouts, and tracking execution time in performance-critical sections of code.",
+        "keyConcepts": [
+          "elapsed-time",
+          "duration-calculation",
+          "time-measurement",
+          "timestamp-difference"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "7cd10276bbbdb958": {
+      "bodyHash": "22dae39dadbeef02",
+      "summary": {
+        "summary": "Initializes the chain key for Noise handshake protocol by hashing the construction string; foundational step for key derivation.",
+        "docSummary": "Initializes the chain key for the Noise protocol handshake. This is the first step in the key derivation process and establishes the baseline cryptographic state for the protocol.",
+        "keyConcepts": [
+          "noise-protocol",
+          "key-derivation",
+          "cryptographic-initialization"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "880268f328e22161": {
+      "bodyHash": "869d66551f75c4c4",
+      "summary": {
+        "summary": "Derives the initial hash state from the chain key and identifier constant; establishes the handshake hash state used for integrity verification.",
+        "docSummary": "Derives the initial hash state for the Noise protocol by combining the chain key with the protocol identifier. This hash state is used throughout the handshake to verify message integrity.",
+        "keyConcepts": [
+          "noise-protocol",
+          "hash-mixing",
+          "handshake-state"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "183f9c5a5d760951": {
+      "bodyHash": "7ddfc659d0a89f7f",
+      "summary": {
+        "summary": "Updates hash state by hashing together previous hash and new data; used to chain message contents into cumulative handshake hash.",
+        "docSummary": "Updates the handshake hash state by incorporating new data. This function chains message contents into the cumulative hash to ensure protocol transcript integrity.",
+        "keyConcepts": [
+          "hash-chaining",
+          "transcript-integrity",
+          "message-binding"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "2eb18763ddf5a3f3": {
+      "bodyHash": "c2036cf60c56c5b4",
+      "summary": {
+        "summary": "Performs HKDF expansion of chain key with Diffie-Hellman result to derive new chain key and encryption key; core key derivation in Noise protocol.",
+        "docSummary": "Performs key derivation using HKDF to extract a new chain key and encryption key from a Diffie-Hellman shared secret. This is the core cryptographic mechanism for progressive key generation in the Noise handshake.",
+        "keyConcepts": [
+          "key-derivation",
+          "hkdf",
+          "diffie-hellman"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "57f64ebfab49d3cf": {
+      "bodyHash": "11c971847737aa20",
+      "summary": {
+        "summary": "Encrypts plaintext using hash-derived nonce, then chains the ciphertext into the handshake hash; combines encryption with transcript binding.",
+        "docSummary": "Encrypts plaintext and incorporates the ciphertext into the handshake transcript. This ensures that all encrypted messages are bound into the cumulative handshake hash for integrity verification.",
+        "keyConcepts": [
+          "symmetric-encryption",
+          "transcript-binding",
+          "authenticated-encryption"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "033f0d4f830e3ebc": {
+      "bodyHash": "c2251426a2258cfb",
+      "summary": {
+        "summary": "Decrypts ciphertext with hash-derived nonce and validates authenticity, then chains ciphertext into handshake hash; enables trustworthy decryption.",
+        "docSummary": "Decrypts ciphertext and incorporates it into the handshake transcript. Returns None on decryption failure or authentication failure, ensuring that message tampering is detected.",
+        "keyConcepts": [
+          "symmetric-decryption",
+          "authenticated-encryption",
+          "error-handling"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "cadba5c73be4b01d": {
+      "bodyHash": "bbcb5ef10bfbb933",
+      "summary": {
+        "summary": "Derives 16-byte MAC authentication tag from message and responder public key to protect against attacks and enable early validation.",
+        "docSummary": "Computes the MAC1 authentication tag used to protect Noise handshake messages. This tag enables early validation of messages and protects against certain classes of attacks without requiring expensive cryptographic operations.",
+        "keyConcepts": [
+          "message-authentication-code",
+          "attack-prevention",
+          "early-validation"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "2131e545c7ffb991": {
+      "bodyHash": "4c5dedf496d4b56a",
+      "summary": {
+        "summary": "Initiates Noise protocol handshake by creating initiation message with ephemeral public key and encrypted identity and timestamp.",
+        "docSummary": "Initiates a Noise protocol handshake by creating the first message containing the initiator's ephemeral key and encrypted static key and timestamp. Returns the message to send and internal state for processing the response.",
+        "keyConcepts": [
+          "handshake-initiation",
+          "message-creation",
+          "state-management"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "ef7501acfdab4359": {
+      "bodyHash": "340f9e57a91d7ebc",
+      "summary": {
+        "summary": "Initiates Noise handshake with PSK support by generating random ephemeral secret and current timestamp for message construction.",
+        "docSummary": "Initiates a Noise protocol handshake with PSK support. Generates a random ephemeral key and current timestamp, then creates the initiation message. Returns the message and state needed for the responder to complete the handshake.",
+        "keyConcepts": [
+          "handshake-initiation",
+          "psk-support",
+          "random-generation"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "0142b6181b350750": {
+      "bodyHash": "2de394f98702139c",
+      "summary": {
+        "summary": "Executes complete Noise IKpsk2 initiation by performing DH operations, encrypting static key and timestamp, computing MACs.",
+        "docSummary": "Executes the core Noise IKpsk2 protocol initiation. Performs Diffie-Hellman operations, encrypts the initiator's static key and timestamp, and computes authentication codes. Returns the initiation message ready to send and internal state for processing the response.",
+        "keyConcepts": [
+          "noise-protocol",
+          "key-exchange",
+          "message-encryption"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "34618865bb931be6": {
+      "bodyHash": "9cde59aed0965791",
+      "summary": {
+        "summary": "Completes initiator-side handshake by verifying receiver index, performing DH operations, mixing PSK, and deriving transport keys.",
+        "docSummary": "Processes the responder's handshake message to complete the initiator side of the handshake. Verifies the response, performs remaining Diffie-Hellman operations, and derives the symmetric keys needed for encrypted communication.",
+        "keyConcepts": [
+          "handshake-completion",
+          "response-validation",
+          "session-establishment"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "45bba18193754a7c": {
+      "bodyHash": "74d2053d14caffe3",
+      "summary": {
+        "summary": "Responder-side handshake processing without PSK; validates initiator message, decrypts identity and timestamp, derives response and session keys.",
+        "docSummary": "Processes the initiator's handshake message at the responder side without PSK. Validates the message, extracts the initiator's identity and timestamp, and returns the response message to send plus session keys.",
+        "keyConcepts": [
+          "handshake-processing",
+          "message-validation",
+          "response-generation"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "8c232a11c57eeeee": {
+      "bodyHash": "6afce6696f1c2819",
+      "summary": {
+        "summary": "Responder-side Noise handshake with PSK by generating ephemeral secret and validating initiator message.",
+        "docSummary": "Processes the initiator's handshake message at the responder side with PSK support. Generates a random ephemeral key, validates the initiation message, and returns the response message plus symmetric session keys.",
+        "keyConcepts": [
+          "handshake-processing",
+          "psk-support",
+          "random-generation"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "b339f467d4b71025": {
+      "bodyHash": "9d3c479e4dab2b5e",
+      "summary": {
+        "summary": "Executes responder-side Noise IKpsk2 handshake: validates MAC1, performs DH operations, decrypts identity and timestamp, enforces replay protection.",
+        "docSummary": "Executes the core responder-side Noise IKpsk2 handshake. Validates the MAC1 authentication code, performs Diffie-Hellman operations, decrypts the initiator's identity and timestamp, and enforces replay protection before deriving session keys.",
+        "keyConcepts": [
+          "handshake-processing",
+          "replay-protection",
+          "authentication"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "50feb2ae9b98ae24": {
+      "bodyHash": "53223ab2cd55a378",
+      "summary": {
+        "summary": "Performs constant-time comparison of MAC values using subtle crate to prevent timing-based attacks on authentication codes.",
+        "docSummary": "Performs constant-time comparison of MAC values to prevent timing-based attacks. Uses the subtle crate's constant-time equality operation to ensure the comparison time does not reveal information about the data.",
+        "keyConcepts": [
+          "timing-attack-prevention",
+          "constant-time-comparison",
+          "security-primitive"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "35c8bf2f267b7e42": {
+      "bodyHash": "3032462a374156f1",
+      "summary": {
+        "summary": "Computes a BLAKE2s-256 cryptographic hash of chunked input data, accumulating updates across multiple byte slices and returning a 32-byte digest.",
+        "docSummary": "The hash function computes a BLAKE2s-256 cryptographic hash of input data provided as multiple chunks. It combines byte slices into a single 32-byte digest, useful for checksums and data integrity verification.",
+        "keyConcepts": [
+          "hash",
+          "cryptographic-hash",
+          "blake2s",
+          "data-integrity",
+          "digest"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "64d25b94170a8d5d": {
+      "bodyHash": "d5a50f03cad7bc2a",
+      "summary": {
+        "summary": "Computes a BLAKE2s message authentication code using a secret key and chunked data, returning a 32-byte MAC tag for authenticity and integrity verification.",
+        "docSummary": "The mac function generates a BLAKE2s-based message authentication code for verifying data authenticity and integrity. It accepts a key (up to 32 bytes) and data provided as chunks, producing a 32-byte authentication tag.",
+        "keyConcepts": [
+          "message-authentication-code",
+          "mac",
+          "blake2s",
+          "cryptographic",
+          "key-based"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "eb74ca5b279f1b8f": {
+      "bodyHash": "5df8f83762a0ce58",
+      "summary": {
+        "summary": "Implements HKDF key derivation using BLAKE2s-HMAC, performing extraction and expansion phases to derive three independent 32-byte keys from a master key and input material.",
+        "docSummary": "The hkdf function implements HMAC-based Key Derivation Function using BLAKE2s, deriving multiple cryptographic keys from a master secret. It returns three independent 32-byte keys suitable for different cryptographic purposes in key establishment protocols.",
+        "keyConcepts": [
+          "key-derivation",
+          "hkdf",
+          "hmac",
+          "blake2s",
+          "key-expansion"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "c10d7037e098de41": {
+      "bodyHash": "9ea8c868c963badc",
+      "summary": {
+        "summary": "Implements core HMAC-BLAKE2s computation using standard HMAC construction with inner/outer key padding to the BLAKE2s block size, returning a 32-byte authentication tag.",
+        "docSummary": "The hmac_blake2s function is the core HMAC implementation using BLAKE2s as the underlying hash function. It handles key padding to the BLAKE2s block size and performs the standard HMAC inner and outer hash operations.",
+        "keyConcepts": [
+          "hmac",
+          "blake2s",
+          "key-padding",
+          "cryptographic",
+          "message-authentication"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "d794e7cca7327648": {
+      "bodyHash": "5bd1d35ef4d6bde0",
+      "summary": {
+        "summary": "Performs a WireGuard-like cryptographic handshake between initiator and responder, returning two authenticated transport sessions ready for encrypted communication.",
+        "docSummary": "Establishes cryptographic key exchange and authentication between two peers using the WireGuard handshake protocol. Returns fully configured transport sessions for both the initiator and responder, enabling subsequent encrypted message exchange.",
+        "keyConcepts": [
+          "cryptographic-handshake",
+          "session-establishment",
+          "peer-authentication",
+          "key-exchange"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "8bdb74e24908108b": {
+      "bodyHash": "1e0d41bff8c9563a",
+      "summary": {
+        "summary": "Integration test verifying bidirectional encryption and decryption of 100 packets in each direction through established transport sessions.",
+        "docSummary": "Comprehensive integration test validating that transport sessions correctly encrypt and decrypt payloads bidirectionally. Tests 100 messages from initiator to responder and 100 in reverse, ensuring end-to-end message integrity and correct session state.",
+        "keyConcepts": [
+          "integration-test",
+          "encryption-decryption",
+          "bidirectional-communication",
+          "payload-verification"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "e9ec44f38916e0f7": {
+      "bodyHash": "900b6f556c25563a",
+      "summary": {
+        "summary": "Security test validating that the transport session's replay protection mechanism rejects duplicate packets and altered counters.",
+        "docSummary": "Tests the anti-replay security mechanism by confirming that identical packets with the same counter are rejected on resubmission. Also validates that AEAD authentication fails when counters are tampered with, preventing replay attacks.",
+        "keyConcepts": [
+          "replay-protection",
+          "security-test",
+          "anti-replay-attack",
+          "counter-validation"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "44c61e3bbcaa1cb7": {
+      "bodyHash": "01d263bf2d904596",
+      "summary": {
+        "summary": "Validates that transport sessions correctly accept packets delivered out of order while maintaining anti-replay protection for previously seen packets.",
+        "docSummary": "Tests out-of-order packet handling by delivering encrypted packets in reverse sequence. Verifies that sessions accept valid packets regardless of order while rejecting any subsequent replays of previously accepted packets.",
+        "keyConcepts": [
+          "packet-ordering",
+          "replay-protection",
+          "out-of-order-delivery",
+          "sliding-window"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "2ada5411d2391cf1": {
+      "bodyHash": "44c19fcebd486374",
+      "summary": {
+        "summary": "Tests serialization and deserialization of WireGuard protocol messages (Initiation, Response, Transport) to ensure wire format compliance and information preservation.",
+        "docSummary": "Validates that handshake and transport protocol messages correctly serialize to wire format and deserialize without information loss. Tests message structure integrity and field preservation through the serialization round-trip.",
+        "keyConcepts": [
+          "serialization",
+          "wire-format",
+          "protocol-compliance",
+          "message-structure"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "197b2be692e6792c": {
+      "bodyHash": "5e377f93e750a5ec",
+      "summary": {
+        "summary": "Tests that a responder can simultaneously manage multiple independent handshake sessions with different initiators, maintaining isolated encryption contexts per peer.",
+        "docSummary": "Validates multi-peer support by establishing five concurrent handshake sessions between one responder and five different initiators. Confirms that each peer pair maintains independent encryption state and can communicate without interference.",
+        "keyConcepts": [
+          "multi-peer-support",
+          "session-isolation",
+          "concurrent-handshakes",
+          "state-management"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "19152917cc2cd564": {
+      "bodyHash": "0d17b63767fe9f32",
+      "summary": {
+        "summary": "Security test verifying that AEAD authentication rejects ciphertexts with corrupted bits, validating the integrity protection mechanism.",
+        "docSummary": "Tests the AEAD cipher's authentication properties by tamping with a single bit of the ciphertext. Confirms that decryption fails when the ciphertext has been modified, ensuring only authentically encrypted messages are accepted.",
+        "keyConcepts": [
+          "aead-authentication",
+          "tamper-detection",
+          "ciphertext-integrity"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "42ea441cc48bd1c0": {
+      "bodyHash": "0cbd5b3dd4482521",
+      "summary": {
+        "summary": "Tests that the transport session correctly handles empty payloads, supporting WireGuard's keepalive mechanism.",
+        "docSummary": "Validates the handling of zero-length packets by encrypting and decrypting empty payloads. Ensures the protocol supports keepalive packets with no message content.",
+        "keyConcepts": [
+          "keepalive-mechanism",
+          "zero-length-payload",
+          "edge-case-testing"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "c7c3e16a4f029af7": {
+      "bodyHash": "375257758764a265",
+      "summary": {
+        "summary": "Tests that the transport session correctly encrypts and decrypts maximum-size payloads (1400 bytes), respecting MTU constraints.",
+        "docSummary": "Validates large payload handling by encrypting and decrypting a 1400-byte payload, typical of WireGuard's MTU-aware maximum message size. Ensures the protocol maintains integrity with near-maximum sized packets.",
+        "keyConcepts": [
+          "maximum-payload-size",
+          "mtu-compliance",
+          "large-payload-handling",
+          "edge-case-testing"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "fecf24b40ac3f2d3": {
+      "bodyHash": "fefce2528ba44965",
+      "summary": {
+        "summary": "Decodes a base64-encoded string into a 32-byte cryptographic key, validating exact size requirement.",
+        "docSummary": "Converts a base64-encoded string representation into a cryptographic key. Validates that the decoded result is exactly 32 bytes, required for WireGuard key material. Used for parsing keys from configuration formats.",
+        "keyConcepts": [
+          "key-decoding",
+          "base64",
+          "validation",
+          "cryptography"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "1d684aa8fae449a0": {
+      "bodyHash": "207528a028c938fc",
+      "summary": {
+        "summary": "Parses key-value pairs into a WireGuard interface configuration, validating required fields and supporting both IPv4 and IPv6 addresses.",
+        "docSummary": "Constructs interface configuration from key-value pairs in WireGuard syntax. Parses private key, listen port, and addresses (IPv4 and IPv6 with CIDR notation), validating required fields are present and properly formatted.",
+        "keyConcepts": [
+          "configuration-parsing",
+          "wireguard",
+          "network-config",
+          "validation",
+          "ipv4-ipv6"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "7d33e505e5dee71b": {
+      "bodyHash": "04e2f0cb5488d69f",
+      "summary": {
+        "summary": "Parses key-value pairs into a WireGuard peer configuration, validating required public key and optional connection parameters.",
+        "docSummary": "Constructs peer configuration from key-value pairs in WireGuard syntax. Parses public key (required), preshared key, endpoint address, allowed CIDR blocks, and persistent keepalive interval, validating all required fields are present.",
+        "keyConcepts": [
+          "configuration-parsing",
+          "wireguard",
+          "peer-config",
+          "validation",
+          "network-config"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "cd0f21c8dda461f1": {
+      "bodyHash": "914af7dc555a2f9a",
+      "summary": {
+        "summary": "Parses a CIDR notation string into an IP address and prefix length, defaulting to /32 for IPv4 and /128 for IPv6.",
+        "docSummary": "Converts a string in CIDR notation (e.g., '192.168.1.0/24') into a structured address with prefix. If no prefix is provided, assumes /32 for IPv4 and /128 for IPv6. Validates both address format and prefix length.",
+        "keyConcepts": [
+          "cidr-parsing",
+          "network-addressing",
+          "validation",
+          "ipv4-ipv6"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "b10b723fbb7b5638": {
+      "bodyHash": "5c6e096178205053",
+      "summary": {
+        "summary": "Converts a CIDR prefix length to an IPv4 netmask by creating a bitmask with the specified number of leading ones.",
+        "docSummary": "Converts a CIDR prefix length (0-32) into its corresponding IPv4 netmask. For example, prefix 24 becomes 255.255.255.0. Handles boundary cases where prefix is 0 (0.0.0.0) or >= 32 (255.255.255.255).",
+        "keyConcepts": [
+          "network-addressing",
+          "cidr-conversion",
+          "bitmasking",
+          "ipv4"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "d41025a35659398b": {
+      "bodyHash": "99b6f75aeed199f9",
+      "summary": {
+        "summary": "Encrypts plaintext using ChaCha20Poly1305 AEAD with counter-based nonce derivation. Combines encryption and authentication in a single call, panicking if encryption fails.",
+        "docSummary": "Encrypts plaintext data with authenticated encryption using ChaCha20Poly1305 and a counter-derived nonce. This is the primary function for secure encryption when the nonce can be derived from a counter value.",
+        "keyConcepts": [
+          "encryption",
+          "authenticated-encryption",
+          "aead",
+          "chacha20poly1305",
+          "counter-mode"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "3e39f8f3faf148cd": {
+      "bodyHash": "928d149ce46de80a",
+      "summary": {
+        "summary": "Decrypts and verifies ciphertext using ChaCha20Poly1305. Returns decrypted plaintext on successful authentication, or None if the ciphertext is invalid or tampered with.",
+        "docSummary": "Decrypts ciphertext encrypted with the seal function, verifying authentication using ChaCha20Poly1305. Returns the plaintext on successful authentication, or None if the ciphertext is invalid.",
+        "keyConcepts": [
+          "decryption",
+          "authenticated-encryption",
+          "aead",
+          "chacha20poly1305",
+          "error-handling"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "d2146874cf87f535": {
+      "bodyHash": "07be9f3a6f779299",
+      "summary": {
+        "summary": "Encrypts plaintext using XChaCha20Poly1305 with explicit 24-byte nonce. Extends nonce length beyond standard ChaCha20 for use cases requiring longer nonce management.",
+        "docSummary": "Encrypts plaintext using XChaCha20Poly1305 with an extended 24-byte nonce for scenarios requiring longer nonce values. Supports authenticated encryption with explicit nonce management.",
+        "keyConcepts": [
+          "encryption",
+          "authenticated-encryption",
+          "aead",
+          "xchacha20poly1305",
+          "extended-nonce"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "959e1458a3adb0ac": {
+      "bodyHash": "d8799251324b95d9",
+      "summary": {
+        "summary": "Decrypts ciphertext using XChaCha20Poly1305 with 24-byte nonce. Verifies authentication and returns plaintext on success, None on authentication failure.",
+        "docSummary": "Decrypts ciphertext encrypted with the xseal function using XChaCha20Poly1305. Returns plaintext on successful authentication verification, or None if validation fails.",
+        "keyConcepts": [
+          "decryption",
+          "authenticated-encryption",
+          "aead",
+          "xchacha20poly1305",
+          "error-handling"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "6848bea98b99fed1": {
+      "bodyHash": "2e41fc0c1132b963",
+      "summary": {
+        "summary": "Encrypts plaintext into a provided buffer with authentication tag appended. Enables in-place encryption without allocating new memory for the output.",
+        "docSummary": "Performs in-place encryption into a pre-allocated buffer, appending the authentication tag directly. Use when buffer reuse is critical for performance or memory efficiency.",
+        "keyConcepts": [
+          "in-place-encryption",
+          "buffer-management",
+          "authenticated-encryption",
+          "detached-mac",
+          "zero-copy"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "7bb32c983f5621df": {
+      "bodyHash": "eaaa2e0459b19143",
+      "summary": {
+        "summary": "Decrypts and verifies ciphertext directly in a buffer, modifying it in-place. Returns plaintext length on successful authentication, None on failure.",
+        "docSummary": "Performs in-place decryption and authentication from a buffer containing ciphertext and detached tag. Returns the plaintext length on success or None if authentication fails, enabling zero-copy decryption.",
+        "keyConcepts": [
+          "in-place-decryption",
+          "buffer-management",
+          "authenticated-encryption",
+          "detached-mac",
+          "zero-copy"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "86eaf6af3b84d3af": {
+      "bodyHash": "074ac9bba9f15ee0",
+      "summary": {
+        "summary": "Helper function constructing a 12-byte ChaCha20 nonce by encoding a counter value in little-endian format. Used internally by seal and open functions.",
+        "docSummary": "Constructs a 12-byte nonce for ChaCha20Poly1305 from a 64-bit counter value. Internal helper that encodes the counter in little-endian format in the nonce's upper bytes.",
+        "keyConcepts": [
+          "nonce-generation",
+          "counter-based-mode",
+          "chacha20poly1305",
+          "little-endian"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "b8f31d8ee87ba90d": {
+      "bodyHash": "7d6eaa1c0a4c441e",
+      "summary": {
+        "summary": "Orchestrates the WireGuard enrollment process: generates cryptographic keys, sends enrollment request via UDP, receives server response, configures TUN interface with assigned IP, and adds network routes.",
+        "docSummary": "Entry point for enrollment workflow. Performs client-side enrollment by generating keys, communicating with enrollment server over UDP, configuring local TUN interface with assigned IP address, and setting up network routing for the pool network.",
+        "keyConcepts": [
+          "enrollment",
+          "cryptography",
+          "network-configuration",
+          "tun-interface",
+          "udp-communication",
+          "key-derivation",
+          "route-management"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "ffc514d57ad3b63a": {
+      "bodyHash": "8b2b1e3ba7e09e30",
+      "summary": {
+        "summary": "Generates a random u32 by reading 4 cryptographic random bytes from the system and converting them to little-endian u32 for entropy-dependent operations.",
+        "docSummary": "Utility function that reads cryptographic randomness from the system and returns it as a u32 value. Used internally for operations requiring entropy or random number generation.",
+        "keyConcepts": [
+          "random-generation",
+          "cryptography",
+          "entropy"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "58d1688ae28d89e1": {
+      "bodyHash": "c54f354e7f9ab066",
+      "summary": {
+        "summary": "Encodes a 32-byte cryptographic key to its base64 string representation for display and serialization purposes.",
+        "docSummary": "Converts 32-byte keys to base64 string format for human-readable display and logging. Used when showing public keys or other cryptographic material to users or for serialization.",
+        "keyConcepts": [
+          "encoding",
+          "base64",
+          "serialization"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "bcb7d6399ba5407a": {
+      "bodyHash": "9b382652621cb82a",
+      "summary": {
+        "summary": "Adds network routes for CIDR blocks through a TUN interface by executing platform-specific system commands (route on macOS, ip route on Linux) with error handling.",
+        "docSummary": "Platform-abstracted route management utility. Executes OS-specific commands to add routes to the system routing table, handling both macOS (route command) and Linux (ip command) with appropriate error reporting.",
+        "keyConcepts": [
+          "network-routing",
+          "platform-abstraction",
+          "system-commands",
+          "network-configuration"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "c4b878d6e62d7a78": {
+      "bodyHash": "00d92e36f3604fb5",
+      "summary": {
+        "summary": "Initializes the VPN tunnel daemon by creating TUN device, configuring network interfaces (IPv4/IPv6), binding UDP socket, and setting up peer management infrastructure.",
+        "docSummary": "The entry point for the tunnel daemon that orchestrates initialization of the virtual TUN interface, configures network parameters, binds the UDP socket for WireGuard protocol communication, and builds the peer list. This function sets up all infrastructure required to operate the VPN tunnel.",
+        "keyConcepts": [
+          "tunnel-initialization",
+          "tun-device",
+          "network-setup",
+          "udp-socket",
+          "peer-management"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "e265dc16de568637": {
+      "bodyHash": "3a0e0bbd6381ef29",
+      "summary": {
+        "summary": "Generates a cryptographically random 32-bit unsigned integer by obtaining random bytes and converting them to little-endian format. Used for random peer or packet selection.",
+        "docSummary": "Produces a cryptographically random u32 integer using system entropy. Useful for random selection operations such as peer index randomization in load balancing or packet routing decisions.",
+        "keyConcepts": [
+          "randomization",
+          "cryptographic-entropy",
+          "u32-generation"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "2d1eab665a425cc6": {
+      "bodyHash": "9a5a92c3a9cef8bd",
+      "summary": {
+        "summary": "Populates a mutable byte buffer with cryptographic random bytes from getrandom. Panics if random generation fails. Core utility for entropy operations.",
+        "docSummary": "Fills a provided mutable byte buffer with cryptographic random bytes using the system's secure random source. This low-level utility function panics on failure and serves as the foundation for all randomness operations.",
+        "keyConcepts": [
+          "cryptographic-entropy",
+          "buffer-filling",
+          "random-bytes"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "83c14974c8022612": {
+      "bodyHash": "80bfd347618e78f0",
+      "summary": {
+        "summary": "Registers SIGINT and SIGTERM handlers to execute a callback on shutdown. Uses unsafe libc signal operations and spawns a background thread to block on signal delivery.",
+        "docSummary": "Establishes graceful shutdown capability by intercepting SIGINT and SIGTERM signals and executing a user-provided callback. Internally uses a background thread and libc signal primitives to enable clean daemon termination.",
+        "keyConcepts": [
+          "signal-handling",
+          "graceful-shutdown",
+          "sigint-sigterm",
+          "thread-spawning"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "6cfb13f2ed28e769": {
+      "bodyHash": "eb980657dc687e5f",
+      "summary": {
+        "summary": "An extern 'C' function that serves as a no-operation signal handler. Registered with libc::signal to effectively disable default signal behavior.",
+        "docSummary": "A no-operation signal handler used to override default SIGINT and SIGTERM behavior. Allows the ctrlc_handler function to manage signals via the sigwait mechanism instead of default signal delivery.",
+        "keyConcepts": [
+          "signal-handler",
+          "c-ffi",
+          "signal-override"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "50a1ec5fc8664f39": {
+      "bodyHash": "c54f354e7f9ab066",
+      "summary": {
+        "summary": "Encodes a 32-byte cryptographic key as a base64 string using standard alphabet encoding. Produces human-readable representation suitable for display or transmission.",
+        "docSummary": "Converts a 32-byte cryptographic key to base64 string representation using standard encoding alphabet. Commonly used for displaying WireGuard keys and other cryptographic material in logs, configuration, or user-facing output.",
+        "keyConcepts": [
+          "base64-encoding",
+          "key-representation",
+          "string-conversion"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "c8d3d136efe54164": {
+      "bodyHash": "330ed8aa35ec1b7d",
+      "summary": {
+        "summary": "Executes the ifconfig system command to assign an IPv6 address to a network interface. Returns full command output including stdout/stderr for error handling.",
+        "docSummary": "Runs the system ifconfig utility to configure an IPv6 address on the specified network interface. Returns complete process output for error checking and diagnostics of IPv6 address assignment operations.",
+        "keyConcepts": [
+          "ipv6-configuration",
+          "system-command",
+          "network-interface"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "1cf8e8ec3bccbe2a": {
+      "bodyHash": "d224073b403e5258",
+      "summary": {
+        "summary": "Executes the route add system command to install a network route (IPv4 or IPv6) pointing to the specified interface. Returns command output for error verification.",
+        "docSummary": "Invokes the system route command to add a network route (IPv4 or IPv6) to the specified interface. Returns complete process output enabling error checking and diagnostics for route management operations.",
+        "keyConcepts": [
+          "route-management",
+          "network-configuration",
+          "ipv4-ipv6"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "b89d109e45e87a7f": {
+      "bodyHash": "212dc34f8bffd189",
+      "summary": {
+        "summary": "Executes the route delete system command to remove a network route (IPv4 or IPv6) from the specified interface. Returns command output for error verification.",
+        "docSummary": "Invokes the system route command to remove an existing network route (IPv4 or IPv6) from the specified interface. Returns complete process output for error checking and cleanup diagnostics.",
+        "keyConcepts": [
+          "route-management",
+          "network-cleanup",
+          "ipv4-ipv6"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "1cedd0eda598e20a": {
+      "bodyHash": "cb81e58c49bca672",
+      "summary": {
+        "summary": "Parses Ethernet frames to extract UDP packets, dispatching to IPv4 or IPv6 parsing based on the ethertype field. Validates frame length and returns None for unsupported protocols.",
+        "docSummary": "Entry point for UDP packet parsing that handles Ethernet frame format detection. Examines the ethertype field to determine IP version and delegates to appropriate IPv4 or IPv6 parser. This is the primary function for processing network packet captures.",
+        "keyConcepts": [
+          "network-parsing",
+          "ethernet",
+          "packet-processing",
+          "udp",
+          "protocol-dispatch"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "7b25c9e84e225d5b": {
+      "bodyHash": "b76afe935d84fb5f",
+      "summary": {
+        "summary": "Parses IPv4 packets to extract UDP payload and source socket address. Validates the IHL header field, protocol field (must be 17 for UDP), and ensures sufficient packet data.",
+        "docSummary": "Extracts UDP flow information and payload from IPv4 packets. Validates the Internet Header Length field and confirms protocol is UDP before extracting source IP and port. Used internally by the main Ethernet packet parser.",
+        "keyConcepts": [
+          "ipv4-parsing",
+          "udp-extraction",
+          "packet-validation",
+          "header-parsing"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "89684cfd51183518": {
+      "bodyHash": "5324d3d9cb71c07f",
+      "summary": {
+        "summary": "Parses IPv6 packets to extract UDP payload and source socket address. Validates the next-header field and ensures sufficient packet data. Does not handle IPv6 extension headers.",
+        "docSummary": "Extracts UDP flow information and payload from IPv6 packets. Confirms the next-header field indicates UDP and extracts source IPv6 address and port. Used internally by the main Ethernet packet parser; extension headers are not supported.",
+        "keyConcepts": [
+          "ipv6-parsing",
+          "udp-extraction",
+          "packet-validation",
+          "header-parsing"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "6c1a03603194781e": {
+      "bodyHash": "a718fa057cdac333",
+      "summary": {
+        "summary": "Returns the Unix domain socket path used for inter-process communication with the rustguard daemon.",
+        "docSummary": "Provides the standard socket path (/tmp/rustguard.sock) for communicating with the rustguard enrollment daemon.",
+        "keyConcepts": [
+          "socket-path",
+          "ipc",
+          "configuration"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "7df8eddc44bfe7a4": {
+      "bodyHash": "4e0c342cedd837fd",
+      "summary": {
+        "summary": "Creates and returns a new enrollment window represented as an atomic integer wrapped in Arc.",
+        "docSummary": "Initializes a new enrollment window control structure used to track enrollment periods. The window is represented as an atomic deadline value for lock-free concurrent access.",
+        "keyConcepts": [
+          "window-control",
+          "atomic-operations",
+          "concurrency"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "b5611251b85cae56": {
+      "bodyHash": "8e8abebb38c036fa",
+      "summary": {
+        "summary": "Tests whether an enrollment window is currently active by comparing stored deadline against system time.",
+        "docSummary": "Determines if an enrollment window is actively open by checking if the current time is before the stored deadline. Returns false if the window was never opened.",
+        "keyConcepts": [
+          "time-based-control",
+          "enrollment-state",
+          "deadline-checking"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "8bca20bd073a1b5e": {
+      "bodyHash": "f91f2db7db4b81c9",
+      "summary": {
+        "summary": "Sets the enrollment window deadline to current time plus the specified duration in seconds.",
+        "docSummary": "Opens an enrollment window by setting its deadline to the current time plus a specified duration. Used to allow enrollment operations during the open period.",
+        "keyConcepts": [
+          "time-based-control",
+          "enrollment-state",
+          "deadline-setting"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "42dcc569790dd1f5": {
+      "bodyHash": "1b4457089f4054a0",
+      "summary": {
+        "summary": "Closes the enrollment window by setting its deadline to zero.",
+        "docSummary": "Immediately closes an enrollment window, preventing further enrollment operations. Can be called before the deadline expires.",
+        "keyConcepts": [
+          "window-control",
+          "enrollment-state",
+          "deadline-reset"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "4726c94569333f16": {
+      "bodyHash": "e52c7ba4f07fb271",
+      "summary": {
+        "summary": "Calculates and returns the number of seconds remaining until the enrollment window deadline expires.",
+        "docSummary": "Returns the remaining seconds until the enrollment window closes. Returns zero if the window is closed or the deadline has passed.",
+        "keyConcepts": [
+          "time-based-control",
+          "deadline-checking",
+          "duration-calculation"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "6128373d4d483fe0": {
+      "bodyHash": "97d9a291cdf19e1d",
+      "summary": {
+        "summary": "Creates a Unix domain socket, sets permissions, and spawns a background thread to accept and handle client connections.",
+        "docSummary": "Initializes the enrollment control server by binding a Unix domain socket and launching a listener thread. Handles cleanup of stale sockets and configures world-writable permissions to allow non-root clients to connect. This is the entry point for the daemon's command interface.",
+        "keyConcepts": [
+          "socket-server",
+          "threading",
+          "enrollment-control",
+          "ipc"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "2e3e5e4aaad263c8": {
+      "bodyHash": "66f23e9164f20d90",
+      "summary": {
+        "summary": "Reads and processes enrollment control commands (OPEN, CLOSE, STATUS) from a connected client and sends formatted responses.",
+        "docSummary": "Internal function that handles individual client connections to the enrollment control socket. Processes commands to open/close enrollment windows, query status, and sends appropriate responses.",
+        "keyConcepts": [
+          "command-processing",
+          "protocol-handling",
+          "enrollment-control"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "5d7ccb265699fc6e": {
+      "bodyHash": "41f8daa0dd09b4ee",
+      "summary": {
+        "summary": "Connects to the rustguard Unix socket, sends a command string, and returns the daemon's response with error handling for connection failures.",
+        "docSummary": "Client function for sending commands to the rustguard enrollment daemon. Establishes a Unix socket connection, transmits a command, and returns the server response with a 5-second timeout. Used by CLI tools to interact with the daemon.",
+        "keyConcepts": [
+          "socket-client",
+          "ipc",
+          "enrollment-control",
+          "error-handling"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "ff829e43940e4fa4": {
+      "bodyHash": "923ef477167df9e2",
+      "summary": {
+        "summary": "Removes a file or socket at the specified path, with error suppression.",
+        "docSummary": "Utility function for removing files and sockets. Errors are silently ignored, making it safe to call even if the file does not exist.",
+        "keyConcepts": [
+          "file-cleanup",
+          "resource-management",
+          "error-suppression"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "3c06ebfd45678395": {
+      "bodyHash": "a8816237ee63cce7",
+      "summary": {
+        "summary": "Receives multiple UDP packets in a single syscall using recvmmsg with MSG_WAITFORONE. Efficiently batches reception and populates packet lengths and source addresses in the provided RecvBatch structure.",
+        "docSummary": "The recv_batch function receives multiple UDP packets in a single system call for high throughput. It blocks until at least one packet arrives, then performs non-blocking collection of additional packets. Packet metadata including source addresses and lengths is stored in the RecvBatch structure.",
+        "keyConcepts": [
+          "batch-receive",
+          "udp-networking",
+          "syscall-optimization",
+          "zero-copy",
+          "non-blocking-io"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "e7896e487def198b": {
+      "bodyHash": "c9e22e88bd4ab407",
+      "summary": {
+        "summary": "Converts C-style libc::sockaddr_storage unions to Rust SocketAddr, supporting IPv4 and IPv6 address families through unsafe pointer casting and endianness conversion.",
+        "docSummary": "Provides interoperability between C-style socket address structures and Rust's native SocketAddr type. Handles both IPv4 and IPv6 addresses, returning None for unknown families. Essential for converting addresses obtained from C-level syscalls into idiomatic Rust types.",
+        "keyConcepts": [
+          "address-conversion",
+          "network-interop",
+          "unsafe-casting",
+          "socket-api"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "f47c98656c0cbeb5": {
+      "bodyHash": "197106510c5620a5",
+      "summary": {
+        "summary": "Sends a UDP packet to a specified socket address using the standard send_to operation, returning the number of bytes sent.",
+        "docSummary": "Simple wrapper around UdpSocket::send_to for transmitting UDP packets to a specified destination address. Acts as the counterpart to recv_batch for outgoing UDP traffic in batch-oriented network I/O patterns.",
+        "keyConcepts": [
+          "packet-transmission",
+          "udp-socket",
+          "network-io",
+          "socket-api"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "df921684189e4904": {
+      "bodyHash": "7d6da0673aed06f2",
+      "summary": {
+        "summary": "Initializes and starts a VPN/WireGuard server by configuring cryptographic keys, network pools, TUN interface with optional multi-queue support on Linux, and enrollment control window. Sets up all networking infrastructure needed for the server to operate.",
+        "docSummary": "The run function is the main entry point for starting a rustguard VPN server. It initializes cryptographic key material, configures the TUN interface (with Linux multi-queue support when available), sets up the IP address pool for clients, and starts the enrollment control window. This function performs all necessary system-level setup to make the server operational.",
+        "keyConcepts": [
+          "vpn-server-initialization",
+          "tun-interface-setup",
+          "multi-queue-networking",
+          "cryptographic-key-generation",
+          "network-pool-management",
+          "enrollment-control"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "55a9f0555cd31b1e": {
+      "bodyHash": "8b2b1e3ba7e09e30",
+      "summary": {
+        "summary": "Generates a random 32-bit unsigned integer by reading system entropy bytes and converting them to a u32 in little-endian format.",
+        "docSummary": "The rand_index function produces a cryptographically random u32 value by sourcing entropy from the system's random number generator. It is useful for any operation requiring random indexing or sampling within 32-bit bounds.",
+        "keyConcepts": [
+          "random-number-generation",
+          "cryptographic-randomness",
+          "system-entropy",
+          "rng"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "cff4069fba8eac1e": {
+      "bodyHash": "c54f354e7f9ab066",
+      "summary": {
+        "summary": "Encodes a 32-byte cryptographic key to its base64-formatted string representation for serialization or display.",
+        "docSummary": "The base64_key function converts a 32-byte key buffer into a base64-encoded string suitable for storage, transmission, or user-facing display. This is a standard encoding format for representing binary cryptographic material as text.",
+        "keyConcepts": [
+          "base64-encoding",
+          "key-serialization",
+          "string-conversion",
+          "cryptographic-representation"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "d5189076956b7345": {
+      "bodyHash": "80041b887c86c76c",
+      "summary": {
+        "summary": "Initializes an AF_XDP socket and loads/attaches a BPF program for high-performance kernel-space packet processing, registering the socket in XSKMAP for kernel-to-userspace packet redirection.",
+        "docSummary": "The setup_xdp function configures eXpress Data Path (XDP) networking on a specified interface by loading a eBPF program into the kernel and creating an AF_XDP socket for direct packet access. This enables high-performance, zero-copy packet processing at network driver level.",
+        "keyConcepts": [
+          "xdp-socket-setup",
+          "ebpf-program-loading",
+          "af-xdp-networking",
+          "high-performance-packets",
+          "kernel-userspace-bridge"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "8b379b88bff4493b": {
+      "bodyHash": "99803ff20c804357",
+      "summary": {
+        "summary": "Returns the default filesystem path where peer enrollment state is persisted.",
+        "docSummary": "Provides the default state file path (/var/lib/rustguard/peers.state) where enrolled peer records are stored. Use this to retrieve the standard location for peer state persistence.",
+        "keyConcepts": [
+          "configuration",
+          "path-resolution",
+          "defaults"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "c148bcf08b3f75bd": {
+      "bodyHash": "c5461847b8e00fab",
+      "summary": {
+        "summary": "Persists enrolled peer data to disk using atomic writes, encoding public keys as base64 and protecting against corruption via temp file + rename pattern.",
+        "docSummary": "Writes peer state to disk with atomic write guarantees. Automatically creates parent directories as needed and uses a temp file with rename to ensure data is not corrupted by interrupted writes. Public keys are base64-encoded for storage.",
+        "keyConcepts": [
+          "file-persistence",
+          "atomic-writes",
+          "serialization",
+          "encoding"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "402c9f327750d61c": {
+      "bodyHash": "9d42518c8c79892c",
+      "summary": {
+        "summary": "Reads and parses peer state from disk, decoding base64-encoded public keys and validating data format, key length, and IP addresses. Gracefully handles missing files.",
+        "docSummary": "Loads previously enrolled peer data from the state file. Returns an empty list if the file does not exist and validates all data including key length (32 bytes) and IP address format. Public keys are decoded from base64.",
+        "keyConcepts": [
+          "file-loading",
+          "deserialization",
+          "parsing",
+          "decoding",
+          "data-validation"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "6294d42a32f6445c": {
+      "bodyHash": "517e70b8f095ab48",
+      "summary": {
+        "summary": "Derives a 32-byte symmetric encryption key from an enrollment token string using a salted hash function. The derived key is used for token-based authenticated encryption in enrollment protocol messages.",
+        "docSummary": "The derive_token_key function produces a 32-byte symmetric key from an enrollment token. It uses protocol-specific context (rustguard-enroll-v1) to ensure consistent, deterministic key derivation. This key serves as the shared secret for all token-based encryption and decryption operations.",
+        "keyConcepts": [
+          "key-derivation",
+          "hashing",
+          "symmetric-encryption",
+          "token-handling"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "87aab6b3eb71d04e": {
+      "bodyHash": "2705475653a1bf5e",
+      "summary": {
+        "summary": "Constructs an enrollment request message by assembling magic bytes, random nonce, and encrypted client public key into a fixed-size buffer for transmission.",
+        "docSummary": "The build_request function creates an enrollment request message suitable for transmission. It encrypts the client's public key using authenticated encryption (AEAD) with a random nonce, prefixing the result with protocol magic bytes to identify the message type.",
+        "keyConcepts": [
+          "message-construction",
+          "authenticated-encryption",
+          "nonce-based-crypto",
+          "protocol-message"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "e46bf16e1c45ed69": {
+      "bodyHash": "8b66ac878b9aa4cf",
+      "summary": {
+        "summary": "Decrypts and validates an enrollment request message, extracting the client's public key after verifying message structure and authentication tag.",
+        "docSummary": "The parse_request function receives an enrollment request message and extracts the client's public key. It validates the message header, decrypts the authenticated ciphertext, and returns the decrypted 32-byte key or None if validation fails.",
+        "keyConcepts": [
+          "message-parsing",
+          "authenticated-decryption",
+          "validation",
+          "error-handling"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "1b15dfbf8da08fb7": {
+      "bodyHash": "9ad8f9c1ef46984a",
+      "summary": {
+        "summary": "Constructs an enrollment response message by encrypting server credentials (public key, assigned IP address, network prefix length) with random nonce and authenticated encryption.",
+        "docSummary": "The build_response function assembles an enrollment response containing server public key and network configuration (IPv4 address and prefix length). It encrypts and authenticates all credentials using the token-derived key and a random nonce for transmission security.",
+        "keyConcepts": [
+          "message-construction",
+          "authenticated-encryption",
+          "network-config",
+          "credential-transmission"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "5ed2980eaa2fca2d": {
+      "bodyHash": "566bbd8a6294f942",
+      "summary": {
+        "summary": "Decrypts and validates an enrollment response message, extracting server public key, assigned IPv4 address, and network prefix length into an EnrollmentOffer structure.",
+        "docSummary": "The parse_response function processes an enrollment response message and returns an EnrollmentOffer containing server credentials. It validates the message structure, decrypts the authenticated ciphertext, and reconstructs the server's public key and assigned network configuration.",
+        "keyConcepts": [
+          "message-parsing",
+          "authenticated-decryption",
+          "deserialization",
+          "validation"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "f85319becade2d81": {
+      "bodyHash": "d2aaa58df17ccedd",
+      "summary": {
+        "summary": "Generates a 24-byte cryptographically secure random nonce using the system's randomness source for use in authenticated encryption operations.",
+        "docSummary": "The random_nonce function produces a random 24-byte value for authenticated encryption operations. It leverages the system's cryptographically secure random number generator (getrandom) to ensure each nonce is unpredictable and unique, which is essential for AEAD security.",
+        "keyConcepts": [
+          "randomness",
+          "cryptographic-operations",
+          "nonce-generation",
+          "rng"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "50b25a31a32f4c47": {
+      "bodyHash": "e5cd77b17f410fe2",
+      "summary": {
+        "summary": "Computes BLAKE2s hash of multiple byte chunks. Takes up to 4 byte slices, extracts their pointers and lengths, delegates to FFI function, and returns 32-byte hash digest.",
+        "docSummary": "Cryptographic hash function that computes a BLAKE2s digest over multiple byte chunks. Accepts up to 4 input chunks and returns a fixed 32-byte hash. Used for integrity verification in cryptographic protocols.",
+        "keyConcepts": [
+          "cryptographic-hashing",
+          "blake2s",
+          "message-digest",
+          "ffi-wrapper"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "a1576d50e69a0544": {
+      "bodyHash": "21f7dc78b1ef4c34",
+      "summary": {
+        "summary": "Computes BLAKE2s-256 message authentication code. Combines a secret key with message data via FFI to generate 32-byte authentication tag for integrity and origin verification.",
+        "docSummary": "Message authentication code function using BLAKE2s-256 algorithm. Provides authenticity verification by combining a secret key with message data. Returns a 32-byte authentication tag suitable for verifying message integrity and origin.",
+        "keyConcepts": [
+          "message-authentication",
+          "blake2s",
+          "cryptographic-verification",
+          "ffi-wrapper"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "e3e53e92a547e4f3": {
+      "bodyHash": "6b254591c3132fa8",
+      "summary": {
+        "summary": "Generates N cryptographically secure random bytes using kernel RNG via FFI. Non-deterministic output suitable for nonces and key material.",
+        "docSummary": "Cryptographic random number generation for fixed-size buffers. Produces N cryptographically secure random bytes suitable for nonce and key generation. Relies on kernel's random number generator via FFI.",
+        "keyConcepts": [
+          "random-number-generation",
+          "cryptographic-randomness",
+          "ffi-wrapper",
+          "non-deterministic"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "cab4a5671e92ef19": {
+      "bodyHash": "d8047214b050494a",
+      "summary": {
+        "summary": "Constant-time byte slice comparison resistant to timing attacks. Performs length check then delegates to FFI for variable-time-independent equality testing.",
+        "docSummary": "Cryptographic comparison function that verifies byte sequence equality in constant time, preventing timing-based side-channel attacks. Essential for comparing authentication tags, MACs, and other sensitive cryptographic values.",
+        "keyConcepts": [
+          "timing-attack-resistance",
+          "constant-time-comparison",
+          "cryptographic-operation",
+          "side-channel-protection"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "9fcce4fdd937e6a0": {
+      "bodyHash": "57e94fd7207c05cd",
+      "summary": {
+        "summary": "Returns the current system time in nanoseconds by calling the kernel function wg_ktime_get_ns, enabling precise timing measurements for kernel module operations.",
+        "docSummary": "The now_ns function provides nanosecond-precision access to the system clock within the kernel module. Use this function for timing measurements, rate limiting, and scheduling operations that require accurate elapsed time tracking.",
+        "keyConcepts": [
+          "timing",
+          "system-time",
+          "nanoseconds",
+          "kernel-interface",
+          "time-measurement"
+        ],
+        "behavioralProfile": "utility"
+      }
+    },
+    "68a215af142d20f7": {
+      "bodyHash": "98082dba15eb97fe",
+      "summary": {
+        "summary": "Securely wipes all cryptographic keys (static secret, peer PSKs, session keys) from device state before freeing memory, ensuring no key material survives in memory after cleanup.",
+        "docSummary": "Performs cryptographic cleanup by zeroizing all key material stored in device state before deallocating memory. This is essential for secure cleanup when shutting down a WireGuard interface.",
+        "keyConcepts": [
+          "memory-safety",
+          "key-zeroization",
+          "cryptographic-cleanup",
+          "memory-deallocation",
+          "security"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "6e3b75c41759ddc6": {
+      "bodyHash": "42b378d6517b222f",
+      "summary": {
+        "summary": "Extern C wrapper that forwards packet transmission requests to the internal do_xmit implementation.",
+        "docSummary": "C FFI entry point for packet transmission. This is the network stack interface that processes outgoing packets through the WireGuard encryption pipeline.",
+        "keyConcepts": [
+          "ffi",
+          "packet-transmission",
+          "c-interface",
+          "network-io"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "8563b9fc4fbcc60c": {
+      "bodyHash": "d4270d4c66ac7c01",
+      "summary": {
+        "summary": "Handles outbound packet encryption and transmission by looking up the peer via AllowedIPs, validating the session, checking message counters against expiry, and encrypting with ChaCha20-Poly1305.",
+        "docSummary": "Core transmission handler that processes outgoing packets for WireGuard encryption. Performs peer lookup via AllowedIPs, validates active sessions, applies counter-based expiry checks, and encrypts packets using ChaCha20-Poly1305 AEAD cipher.",
+        "keyConcepts": [
+          "packet-encryption",
+          "wireguard-tunnel",
+          "aead-cipher",
+          "peer-routing",
+          "session-management"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "2ec72a967356e340": {
+      "bodyHash": "91d5d9ffad618fb9",
+      "summary": {
+        "summary": "Extern C wrapper that forwards incoming packet processing requests to the internal do_rx implementation.",
+        "docSummary": "C FFI entry point for incoming packet handling. Routes received packets to appropriate handlers based on WireGuard message type (handshake or transport).",
+        "keyConcepts": [
+          "ffi",
+          "packet-reception",
+          "c-interface",
+          "message-routing"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "bbb3a9e3c7d89dc9": {
+      "bodyHash": "419c6ba62df16419",
+      "summary": {
+        "summary": "Dispatches incoming packets to type-specific handlers: handshake initiations and responses to protocol handlers, transport packets to data decryption handlers.",
+        "docSummary": "Main reception dispatcher that processes incoming WireGuard packets and routes them to appropriate handlers based on message type. Validates packet structure and delegates to handshake or transport handlers.",
+        "keyConcepts": [
+          "message-routing",
+          "packet-dispatch",
+          "wireguard-protocol",
+          "handshake-handling"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "1c45ca5f32e61d69": {
+      "bodyHash": "a07e71c863b77fe7",
+      "summary": {
+        "summary": "Handles incoming handshake initiation by validating timestamp monotonicity, performing Noise protocol initiation processing, establishing session keys, and sending cryptographic response.",
+        "docSummary": "Processes WireGuard handshake initiation messages. Validates timestamps for replay protection, performs Noise protocol key agreement, and establishes a new session with the peer.",
+        "keyConcepts": [
+          "handshake-initiation",
+          "noise-protocol",
+          "replay-protection",
+          "key-agreement"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "3e9f090357282c3f": {
+      "bodyHash": "0235f4be0da0b748",
+      "summary": {
+        "summary": "Completes handshake by processing response message, extracting session keys from Noise protocol, activating the peer session, and initializing replay protection window.",
+        "docSummary": "Processes WireGuard handshake response messages to complete key establishment. Validates the response against pending handshake state, extracts session keys, and activates the peer connection.",
+        "keyConcepts": [
+          "handshake-response",
+          "noise-protocol",
+          "session-establishment",
+          "key-extraction"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "3bcd38b2b55ba1a4": {
+      "bodyHash": "54abe3d5435decf9",
+      "summary": {
+        "summary": "Decrypts incoming transport data packets using session ChaCha20-Poly1305 keys, checks replay window to prevent replay attacks, and forwards plaintext to network stack.",
+        "docSummary": "Processes encrypted transport data packets. Performs peer lookup via message index, checks replay window to prevent replay attacks, decrypts using ChaCha20-Poly1305, and forwards authenticated plaintext.",
+        "keyConcepts": [
+          "packet-decryption",
+          "replay-protection",
+          "aead-verification",
+          "transport-data"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "de5220992a54d462": {
+      "bodyHash": "0cbaa2813fa7c3b6",
+      "summary": {
+        "summary": "Empty device uninitialization callback required by WireGuard interface contract.",
+        "docSummary": "Device cleanup callback required by the WireGuard interface contract. Currently a no-op stub; actual cleanup is handled by cleanup_state.",
+        "keyConcepts": [
+          "device-lifecycle",
+          "interface-callback"
+        ],
+        "behavioralProfile": "utility"
+      }
+    },
+    "5dc5cdba0a3129b0": {
+      "bodyHash": "9515cddf7d3e640b",
+      "summary": {
+        "summary": "Stub for generic netlink get requests that returns success without processing.",
+        "docSummary": "Placeholder for generic netlink device state queries. Currently unimplemented; returns success without processing requests.",
+        "keyConcepts": [
+          "netlink-interface",
+          "device-state-query"
+        ],
+        "behavioralProfile": "utility"
+      }
+    },
+    "f4905256e7762298": {
+      "bodyHash": "ceb73da5e0397b81",
+      "summary": {
+        "summary": "Stub for generic netlink set requests that returns success without processing peer configuration.",
+        "docSummary": "Placeholder for generic netlink peer configuration updates. Currently unimplemented; returns success without modifying peer state.",
+        "keyConcepts": [
+          "netlink-interface",
+          "peer-configuration"
+        ],
+        "behavioralProfile": "utility"
+      }
+    },
+    "26a7f7f85956ffa7": {
+      "bodyHash": "03611029a59e9e47",
+      "summary": {
+        "summary": "Checks if a pointer value is within Linux error code range to identify error-encoded pointers common in kernel code.",
+        "docSummary": "Utility for validating error-encoded pointers used in Linux kernel code. Returns true if the pointer value is in the range [-4095, -1], representing valid kernel error codes.",
+        "keyConcepts": [
+          "error-handling",
+          "linux-kernel",
+          "pointer-validation"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "186242445305b275": {
+      "bodyHash": "ca1dee6e0143038b",
+      "summary": {
+        "summary": "Entry point that creates a TUN interface, reads packets in a loop, detects ICMP echo requests, and responds by swapping source/destination IPs and recomputing checksums.",
+        "docSummary": "The main application demonstrates TUN device usage by creating a virtual network interface and implementing an ICMP echo (ping) responder. It reads packets from the TUN device, parses IPv4 headers, and for incoming ping requests (ICMP type 8), swaps source and destination addresses, updates the packet type to echo reply, and recomputes checksums before writing responses back.",
+        "keyConcepts": [
+          "tun-device",
+          "packet-processing",
+          "icmp-echo",
+          "network-simulation",
+          "checksum-update",
+          "ping-responder"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "ee3bca81c10e4819": {
+      "bodyHash": "5da223bd6d2afdd9",
+      "summary": {
+        "summary": "Computes the checksum for ICMP packet data using the standard Internet checksum algorithm by delegating to checksum_fold.",
+        "docSummary": "Calculates the Internet checksum (RFC 1071) for ICMP packets. This utility wraps the core checksum_fold algorithm and is used when validating or generating ICMP packet checksums for packet transmission and verification.",
+        "keyConcepts": [
+          "checksum-calculation",
+          "icmp-protocol",
+          "packet-integrity",
+          "network-validation"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "b1dcc341ef4fce32": {
+      "bodyHash": "191feeb4165ddd75",
+      "summary": {
+        "summary": "Computes the checksum for IP header data using the standard Internet checksum algorithm by delegating to checksum_fold.",
+        "docSummary": "Calculates the Internet checksum (RFC 1071) for IPv4 headers. This utility wraps the core checksum_fold algorithm and is used when validating or generating IP header checksums for packet transmission and verification.",
+        "keyConcepts": [
+          "checksum-calculation",
+          "ip-header",
+          "packet-integrity",
+          "network-validation"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "e756d1be3d626d35": {
+      "bodyHash": "475a7e915c8b52bd",
+      "summary": {
+        "summary": "Implements the Internet checksum algorithm (RFC 1071) by processing data as 16-bit big-endian words, accumulating them with carry folding, and returning the one's complement of the final sum.",
+        "docSummary": "Core implementation of the Internet checksum algorithm (RFC 1071). Processes input data as big-endian 16-bit words, accumulates them in a 32-bit sum to handle carries, folds overflow back into the result, and returns the one's complement. Used by both IP header and ICMP packet checksum functions.",
+        "keyConcepts": [
+          "checksum-algorithm",
+          "rfc-1071",
+          "network-checksum",
+          "packet-validation",
+          "bit-manipulation",
+          "carry-folding"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "edfe959410463e76": {
+      "bodyHash": "c6d853732e80f1ff",
+      "summary": {
+        "summary": "Securely clears a mutable byte buffer by overwriting with zeros using platform-level memory zeroing to prevent sensitive cryptographic data from lingering in memory after use.",
+        "docSummary": "Secure memory clearing utility for cryptographic hygiene. Overwrites sensitive data (keys, temporary buffers) with zeros at the OS level. Essential for preventing information leakage via memory residue.",
+        "keyConcepts": [
+          "memory-security",
+          "sensitive-data-clearing",
+          "cryptographic-hygiene"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "c49c2dc51398c053": {
+      "bodyHash": "eb6240850f4b303b",
+      "summary": {
+        "summary": "Compares two byte slices for equality using a constant-time algorithm to prevent timing-based side-channel attacks that could reveal information about cryptographic values.",
+        "docSummary": "Constant-time equality comparison for cryptographic verification. Use instead of standard equality checks when comparing MACs, authentication tags, or signatures to prevent timing attacks.",
+        "keyConcepts": [
+          "constant-time-comparison",
+          "timing-attack-prevention",
+          "cryptographic-verification"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "013f46a2a7422b38": {
+      "bodyHash": "272855b11f40830a",
+      "summary": {
+        "summary": "Computes a BLAKE2s cryptographic hash of up to 8 byte slices by marshalling pointers and lengths into arrays and delegating to the underlying C implementation.",
+        "docSummary": "BLAKE2s hashing interface supporting multiple input chunks. Returns 32-byte digest. Used throughout Noise Protocol for hash operations and cryptographic domain separation.",
+        "keyConcepts": [
+          "blake2s-hashing",
+          "cryptographic-hash",
+          "multi-chunk-input"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "57eb55222a6eb793": {
+      "bodyHash": "3abc2d464c47975b",
+      "summary": {
+        "summary": "Computes a BLAKE2s-256 message authentication code for data using a provided key, producing a 32-byte authentication tag.",
+        "docSummary": "BLAKE2s-based MAC computation for message authentication. Returns 32-byte tag that can be truncated for specific protocol needs. Used for both MAC1 derivation and general authentication.",
+        "keyConcepts": [
+          "message-authentication-code",
+          "blake2s-mac",
+          "key-based-authentication"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "b701ae32bb188696": {
+      "bodyHash": "6153b048bef18a05",
+      "summary": {
+        "summary": "Derives three independent 32-byte keys from a key and input material using HMAC-based Key Derivation Function (HKDF) for expanding cryptographic material.",
+        "docSummary": "HMAC-based Key Derivation Function for expanding input key material. Produces three independent 32-byte keys for different cryptographic purposes in Noise Protocol.",
+        "keyConcepts": [
+          "key-derivation",
+          "hkdf",
+          "key-expansion"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "f0e38e433d6c39ef": {
+      "bodyHash": "072242dc0d6ff0b1",
+      "summary": {
+        "summary": "Encrypts plaintext using ChaCha20-Poly1305 AEAD cipher with a key, counter, and additional authenticated data, returning encrypted size on success.",
+        "docSummary": "ChaCha20-Poly1305 authenticated encryption. Encrypts plaintext and produces ciphertext with appended 16-byte authentication tag. Output size is plaintext length plus tag size.",
+        "keyConcepts": [
+          "chacha20-poly1305",
+          "authenticated-encryption",
+          "aead-cipher"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "03be828838a908af": {
+      "bodyHash": "30bb2cd5f0026511",
+      "summary": {
+        "summary": "Decrypts ChaCha20-Poly1305 ciphertext using a key, counter, and additional authenticated data, returning plaintext size on successful authentication or None on failure.",
+        "docSummary": "ChaCha20-Poly1305 authenticated decryption. Verifies and decrypts ciphertext, returning plaintext size on success. Returns None if authentication tag verification fails.",
+        "keyConcepts": [
+          "chacha20-poly1305",
+          "authenticated-decryption",
+          "aead-verification"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "5ec28f132bc55d71": {
+      "bodyHash": "eaf44b06c0c646cc",
+      "summary": {
+        "summary": "Performs Curve25519 Diffie-Hellman key agreement to compute a shared secret from an ephemeral secret and peer's public key, implementing C2 zero-result rejection.",
+        "docSummary": "Curve25519-based ECDH key agreement for deriving shared secrets. Returns None if computation produces zero (per Noise Protocol C2 rejection rule), otherwise returns 32-byte shared secret.",
+        "keyConcepts": [
+          "diffie-hellman",
+          "curve25519",
+          "key-agreement"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "7b8caca5d2cdf34c": {
+      "bodyHash": "ed3546425e1b0120",
+      "summary": {
+        "summary": "Generates a random Curve25519 keypair by creating a random 32-byte secret and deriving its corresponding 32-byte public key.",
+        "docSummary": "Curve25519 keypair generation for ephemeral or long-term keys. Generates random secret and derives public key in a single operation.",
+        "keyConcepts": [
+          "keypair-generation",
+          "curve25519",
+          "random-key-material"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "333a913266b7b7a2": {
+      "bodyHash": "6b254591c3132fa8",
+      "summary": {
+        "summary": "Generic function that generates N random bytes from the kernel's cryptographically secure random source for use as keys, nonces, and ephemeral material.",
+        "docSummary": "Cryptographically secure random byte generation for N-sized buffers. Draws from system entropy source. Used for ephemeral keys, nonces, and random protocol elements.",
+        "keyConcepts": [
+          "random-generation",
+          "entropy",
+          "cryptographic-randomness"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "6c0c45c50ebb816a": {
+      "bodyHash": "d40265c250793c38",
+      "summary": {
+        "summary": "Derives the initial chain key for a Noise Protocol handshake by hashing the CONSTRUCTION constant, establishing the starting point for key ratcheting.",
+        "docSummary": "Initializes chain key at Noise Protocol handshake start. Returns hash of protocol construction constant for use as base of key derivation chain.",
+        "keyConcepts": [
+          "noise-protocol",
+          "chain-key-initialization",
+          "protocol-setup"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "d4eef5ec79d1dd33": {
+      "bodyHash": "ccdc98b84b071bb6",
+      "summary": {
+        "summary": "Derives the initial hash value for Noise Protocol by hashing the chain key and IDENTIFIER constant together for domain separation.",
+        "docSummary": "Initializes running hash for Noise Protocol handshake. Combines chain key with protocol identifier to establish domain separation and transcript starting point.",
+        "keyConcepts": [
+          "noise-protocol",
+          "hash-initialization",
+          "domain-separation"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "3f2df1fcb4127708": {
+      "bodyHash": "3c838b20b09aee10",
+      "summary": {
+        "summary": "Updates the running hash by incorporating new data, advancing the Noise Protocol's incremental hashing of handshake messages and ciphertexts.",
+        "docSummary": "Advances Noise Protocol hash state by combining current hash with new data. Applied after each message or DH operation to build cryptographic transcript.",
+        "keyConcepts": [
+          "noise-protocol",
+          "hash-ratcheting",
+          "transcript-hashing"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "8eed4bab510efa9e": {
+      "bodyHash": "d8a1327dbffc4fb7",
+      "summary": {
+        "summary": "Performs key mixing in Noise Protocol by extracting and expanding a DH result using HKDF to produce a new chain key and session key for message encryption.",
+        "docSummary": "Key derivation in Noise Protocol that combines DH outputs with chain key state. Returns updated chain key and key for encrypting subsequent messages.",
+        "keyConcepts": [
+          "noise-protocol",
+          "key-ratcheting",
+          "diffie-hellman-combination"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "74238e446a91aa54": {
+      "bodyHash": "749642862199af5a",
+      "summary": {
+        "summary": "Encrypts plaintext and atomically updates the running hash with the ciphertext, combining encryption with hash advancement for Noise Protocol message integrity.",
+        "docSummary": "Atomic encryption and hash update for Noise Protocol. Encrypts message with key and updates running hash with ciphertext for transcript-based authentication.",
+        "keyConcepts": [
+          "noise-protocol",
+          "authenticated-encryption",
+          "transcript-binding"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "df489c926ec03204": {
+      "bodyHash": "93ae69808316eede",
+      "summary": {
+        "summary": "Decrypts ciphertext and atomically updates the running hash with it, implementing the decryption phase of Noise Protocol message processing with transcript verification.",
+        "docSummary": "Atomic decryption and hash update for Noise Protocol. Decrypts message and updates running hash with received ciphertext for transcript-based verification.",
+        "keyConcepts": [
+          "noise-protocol",
+          "authenticated-decryption",
+          "transcript-verification"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "b0ff7df641437060": {
+      "bodyHash": "ad9f804f739c0cb1",
+      "summary": {
+        "summary": "Computes a 16-byte MAC1 message authentication code using responder's public key and message bytes for WireGuard's initial message authentication and DDoS mitigation.",
+        "docSummary": "WireGuard MAC1 computation for message authentication and resource protection. Returns 16-byte authenticator derived from responder key and full message contents.",
+        "keyConcepts": [
+          "wireguard-protocol",
+          "message-authentication",
+          "dos-mitigation"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "fc79d7c00369095e": {
+      "bodyHash": "d6244e35f30a0373",
+      "summary": {
+        "summary": "Retrieves current system time and encodes it in TAI64N format (8 bytes seconds + 4 bytes nanoseconds), providing a monotonic timestamp for WireGuard replay protection.",
+        "docSummary": "TAI64N timestamp generation for WireGuard protocol. Returns current time in TAI64N format for replay attack prevention and message ordering.",
+        "keyConcepts": [
+          "wireguard-protocol",
+          "timestamp-generation",
+          "replay-protection"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "54b119f6dde0f5cc": {
+      "bodyHash": "6deb5b1abce920ef",
+      "summary": {
+        "summary": "Creates a WireGuard Noise Protocol initiation message by performing DH operations, encrypting keys and timestamp, computing MACs, and returning the 148-byte message with initiator state.",
+        "docSummary": "WireGuard protocol handshake initiator. Generates ephemeral keypair, performs DH exchanges, encrypts static key and timestamp, and builds complete initiation message with MAC authentication for the responder.",
+        "keyConcepts": [
+          "wireguard-protocol",
+          "noise-handshake",
+          "key-establishment"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "d456f6fe4d7a8c7a": {
+      "bodyHash": "a6b05293b3b031b5",
+      "summary": {
+        "summary": "Processes a WireGuard response message by verifying MAC, performing additional DH operations with responder ephemeral, mixing PSK, and deriving transport keys for encrypted communication.",
+        "docSummary": "WireGuard protocol response processing on initiator side. Validates response authentication, performs remaining DH exchanges, derives bidirectional transport session keys for packet encryption.",
+        "keyConcepts": [
+          "wireguard-protocol",
+          "noise-handshake",
+          "transport-key-derivation"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "d8702d70dcc5c746": {
+      "bodyHash": "b435dc883f36c327",
+      "summary": {
+        "summary": "Processes a WireGuard initiation message on responder side by verifying MAC, decrypting initiator's key and timestamp, generating response message, and deriving transport keys.",
+        "docSummary": "WireGuard protocol responder handshake processing. Validates initiation message, decrypts initiator credentials, generates response message, and produces bidirectional transport keys. Caller must check timestamp for replay attacks.",
+        "keyConcepts": [
+          "wireguard-protocol",
+          "noise-handshake",
+          "transport-key-derivation"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "9ba5df1a5e8ed232": {
+      "bodyHash": "f5d11cfadfa56516",
+      "summary": {
+        "summary": "Retrieves the last operating system error and returns it as an io::Error wrapper",
+        "docSummary": "Convenience wrapper that captures the last OS error. Used throughout the module to retrieve system-level I/O errors from failed libc calls.",
+        "keyConcepts": [
+          "error-handling",
+          "os-error",
+          "utility-wrapper"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "61066dadc78e5965": {
+      "bodyHash": "68e561255f5ecebc",
+      "summary": {
+        "summary": "Closes a file descriptor and returns the last OS error that preceded the closure",
+        "docSummary": "Error handling utility that closes a file descriptor while preserving the original OS error. Used to ensure proper resource cleanup when an operation fails.",
+        "keyConcepts": [
+          "error-handling",
+          "resource-cleanup",
+          "file-descriptor"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "8046e5673ce9f819": {
+      "bodyHash": "4b7cb6a5982cad0c",
+      "summary": {
+        "summary": "Converts an IPv4 address into a sockaddr_in structure for socket operations",
+        "docSummary": "Constructs a sockaddr_in structure from an IPv4 address for use with socket I/O control operations. Sets up the address family, port, and network byte order conversion.",
+        "keyConcepts": [
+          "socket-setup",
+          "ipv4-address",
+          "struct-construction"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "5b66c9546344a4a5": {
+      "bodyHash": "5bf709fb151f8f3d",
+      "summary": {
+        "summary": "Safely copies an interface name string into a fixed-size buffer with truncation protection",
+        "docSummary": "Utility function that safely copies an interface name string into a fixed-size buffer, truncating if necessary to prevent overflow. Used to populate interface name fields in ioctl requests.",
+        "keyConcepts": [
+          "string-copy",
+          "buffer-management",
+          "bounds-checking"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "3d9e8195c6af5158": {
+      "bodyHash": "57bf946d966cdbdd",
+      "summary": {
+        "summary": "Creates and configures a TUN interface device on Linux by opening /dev/net/tun and applying ioctl configuration",
+        "docSummary": "Initializes a TUN network interface on Linux. Opens /dev/net/tun, applies the interface name and configuration via TUNSETIFF ioctl, and delegates address/MTU setup to configure_interface. Returns a Tun struct managing the device.",
+        "keyConcepts": [
+          "device-creation",
+          "tun-interface",
+          "ioctl-configuration",
+          "network-setup"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "b11a97df5e361313": {
+      "bodyHash": "dc25b6afd3eeedc1",
+      "summary": {
+        "summary": "Configures a TUN interface's address, destination, netmask, MTU, and brings it online via ioctl commands",
+        "docSummary": "Performs network interface configuration by setting the IP address, peer address, netmask, MTU, and bringing the interface online. Called by create() after the TUN device is initialized. Uses ioctl to apply all network settings.",
+        "keyConcepts": [
+          "interface-configuration",
+          "network-setup",
+          "ioctl-operations",
+          "address-setup"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "969377bdf932d355": {
+      "bodyHash": "7ece8f4ae0fa2909",
+      "summary": {
+        "summary": "Reads data from a file descriptor into a buffer, returning bytes read or an I/O error",
+        "docSummary": "Performs a read operation on a file descriptor with error handling. Returns the number of bytes successfully read, or an I/O error if the operation fails.",
+        "keyConcepts": [
+          "io-operations",
+          "file-descriptor",
+          "data-reading"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "70c5b99c7b15d3e1": {
+      "bodyHash": "ad20003c511b7a56",
+      "summary": {
+        "summary": "Writes packet data to a file descriptor with validation, returning bytes written or an error",
+        "docSummary": "Performs a write operation on a file descriptor with validation against empty packets. Returns the number of bytes successfully written, or an I/O error.",
+        "keyConcepts": [
+          "io-operations",
+          "file-descriptor",
+          "packet-writing",
+          "validation"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "eae059097b875992": {
+      "bodyHash": "5bf709fb151f8f3d",
+      "summary": {
+        "summary": "Copies a string into a fixed-size buffer (IFNAMSIZ) with length bounds checking to safely store interface names without overflow",
+        "docSummary": "Utility function for safely copying string interface names into fixed-size buffers. Ensures names are truncated to fit within IFNAMSIZ boundary without buffer overflow. Used throughout the TUN interface configuration to populate interface name fields in ioctls.",
+        "keyConcepts": [
+          "buffer-management",
+          "string-handling",
+          "bounds-checking",
+          "safety"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "beffa6e72e0e5c96": {
+      "bodyHash": "4b7cb6a5982cad0c",
+      "summary": {
+        "summary": "Constructs a libc::sockaddr_in structure from an Ipv4Addr, initializing socket address family, port, and address bytes for network communication",
+        "docSummary": "Converts an IPv4 address into a system socket address structure suitable for use with socket operations. Constructs the sockaddr_in with AF_INET family and the provided IPv4 address in network byte order. Used when configuring interface addresses, destinations, and netmasks.",
+        "keyConcepts": [
+          "networking",
+          "ipv4",
+          "socket-address",
+          "system-interop"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "f73a938f2401d21a": {
+      "bodyHash": "68e561255f5ecebc",
+      "summary": {
+        "summary": "Captures the last OS error, closes a file descriptor, and returns the captured error for proper error propagation during cleanup",
+        "docSummary": "Error handling utility that safely closes a file descriptor while preserving the OS error that triggered cleanup. Used in error paths to ensure file descriptors are properly released before returning errors to the caller.",
+        "keyConcepts": [
+          "error-handling",
+          "file-descriptor",
+          "cleanup",
+          "system-interop"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "425ed0ad6b19cd3f": {
+      "bodyHash": "6b47d20452f3c8d9",
+      "summary": {
+        "summary": "Opens the /dev/net/tun device with O_RDWR and O_CLOEXEC flags, returning a file descriptor for TUN interface operations",
+        "docSummary": "Opens the kernel TUN device for virtual network interface creation and packet I/O. Sets close-on-exec flag to ensure proper file descriptor cleanup across process boundaries. Returns the file descriptor for subsequent ioctl configuration.",
+        "keyConcepts": [
+          "tun-device",
+          "device-io",
+          "file-descriptor",
+          "network-virtualization"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "3131b5e690fdfef0": {
+      "bodyHash": "5ddcc4975a118121",
+      "summary": {
+        "summary": "Configures a TUN network interface with IP address, destination, netmask, MTU via ioctl calls, and brings the interface up by setting IFF_UP flag",
+        "docSummary": "Performs comprehensive TUN interface configuration including address assignment, destination endpoint, netmask, MTU, and interface activation. Uses socket ioctl operations to apply settings to the kernel. Manages socket lifecycle and error handling throughout the configuration sequence.",
+        "keyConcepts": [
+          "network-configuration",
+          "ioctl-operations",
+          "interface-management",
+          "system-interop",
+          "linux-networking"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "752d062aaa82fb6d": {
+      "bodyHash": "898edb1684e6d223",
+      "summary": {
+        "summary": "Creates a BPF XDP socket map with the specified capacity by invoking the BPF_MAP_CREATE syscall, returning a file descriptor for kernel map access.",
+        "docSummary": "Allocates a new BPF XDP socket map with the given capacity. Used internally by the BPF loader to create kernel data structures required for XDP program packet processing and data exchange.",
+        "keyConcepts": [
+          "bpf-maps",
+          "xdp-socket-map",
+          "kernel-syscall",
+          "map-creation"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "e1779578831b535e": {
+      "bodyHash": "4110bac9021e43cb",
+      "summary": {
+        "summary": "Loads compiled BPF XDP program instructions into the kernel via BPF_PROG_LOAD syscall with kernel verifier validation and detailed error logging.",
+        "docSummary": "Compiles and verifies BPF program bytecode in the kernel. This is the primary entry point for loading XDP programs, handling kernel verifier interactions and reporting detailed validation failures for debugging.",
+        "keyConcepts": [
+          "bpf-verifier",
+          "xdp-programs",
+          "kernel-syscall",
+          "program-loading"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "12a4df1fbbb30b76": {
+      "bodyHash": "d114485f173ba046",
+      "summary": {
+        "summary": "Inserts or updates a key-value pair in a BPF map using the BPF_MAP_UPDATE_ELEM syscall with BPF_ANY semantics.",
+        "docSummary": "Stores or updates a value in a BPF map by key. This low-level wrapper around kernel BPF map operations populates runtime maps accessed by XDP programs during packet processing.",
+        "keyConcepts": [
+          "bpf-maps",
+          "kernel-syscall",
+          "key-value-storage"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "4409cc726575387d": {
+      "bodyHash": "0271d2252debd9fb",
+      "summary": {
+        "summary": "Attaches an XDP program to a network interface via the ip command, falling back to netlink API for broader kernel compatibility.",
+        "docSummary": "Activates an XDP program on a network interface. Attempts to use the standard ip command first, with automatic fallback to direct netlink manipulation if the primary method fails.",
+        "keyConcepts": [
+          "xdp-attachment",
+          "network-interfaces",
+          "fallback-handling",
+          "program-activation"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "67c3649bf0ac3e6f": {
+      "bodyHash": "8c90c97ed06c55cd",
+      "summary": {
+        "summary": "Attaches or detaches an XDP program to/from a network interface via netlink RTM_SETLINK message construction and socket transmission.",
+        "docSummary": "Direct netlink-based XDP program attachment to network interfaces. Bypasses the ip command and provides low-level control over XDP attachment via raw netlink socket operations and manual message construction.",
+        "keyConcepts": [
+          "netlink-api",
+          "xdp-attachment",
+          "network-configuration",
+          "raw-sockets"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "5664232293d16a06": {
+      "bodyHash": "e23d48803d57232a",
+      "summary": {
+        "summary": "Removes an XDP program from a network interface by calling attach_xdp_netlink with fd=-1 to signal detachment.",
+        "docSummary": "Detaches an XDP program from a network interface. This is the counterpart to attach_xdp and restores the interface to normal packet processing.",
+        "keyConcepts": [
+          "xdp-detachment",
+          "network-interfaces",
+          "program-cleanup"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "b99c2e9e16eafa44": {
+      "bodyHash": "f76c4353cea10e34",
+      "summary": {
+        "summary": "Converts a network interface index to its human-readable name using the libc if_indextoname system function.",
+        "docSummary": "Looks up a network interface name by its kernel index number. This utility function converts between numeric interface identifiers and their corresponding interface names.",
+        "keyConcepts": [
+          "network-interfaces",
+          "interface-lookup",
+          "system-integration"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "483efa6cdf96360d": {
+      "bodyHash": "253bbba4f4f1b823",
+      "summary": {
+        "summary": "Parses a BPF relocatable ELF binary, validates format and architecture compliance, and extracts section metadata for relocation processing.",
+        "docSummary": "Processes compiled BPF ELF binaries for kernel loading. Validates ELF format, extracts relocatable sections, and prepares the binary for map file descriptor injection and program linking.",
+        "keyConcepts": [
+          "elf-parsing",
+          "bpf-relocations",
+          "binary-loading",
+          "format-validation"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "91e307ca688c18e3": {
+      "bodyHash": "f5d11cfadfa56516",
+      "summary": {
+        "summary": "Retrieves the last OS-level error. Convenience wrapper around io::Error::last_os_error() for converting system call failures.",
+        "docSummary": "Utility to retrieve the most recent OS error. Used throughout the module to convert system-level failures into Rust io::Error types for consistent error handling.",
+        "keyConcepts": [
+          "error-handling",
+          "system-calls",
+          "utility"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "5642081f0c7d18f6": {
+      "bodyHash": "68e561255f5ecebc",
+      "summary": {
+        "summary": "Captures current OS error, closes file descriptor, and returns error. Prevents fd leaks while preserving the original error for reporting.",
+        "docSummary": "Helper for error recovery that safely closes a file descriptor while preserving the original OS error. Ensures resource cleanup when socket/ioctl operations fail without masking the root cause.",
+        "keyConcepts": [
+          "resource-cleanup",
+          "error-handling",
+          "file-descriptors"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "93177795cb56b048": {
+      "bodyHash": "0c422177e203cf06",
+      "summary": {
+        "summary": "Constructs a SockaddrIn structure from an IPv4 address with standard socket configuration for address binding and communication.",
+        "docSummary": "Creates a properly formatted IPv4 socket address structure. Used to initialize socket parameters for ioctl-based interface configuration operations.",
+        "keyConcepts": [
+          "socket-configuration",
+          "ipv4",
+          "address-binding"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "90b9bbc8a3647946": {
+      "bodyHash": "7fa4bb1aa508a3c3",
+      "summary": {
+        "summary": "Creates and initializes a macOS utun interface. Establishes kernel control socket, retrieves interface name, and configures MTU. Returns Tun handle for I/O.",
+        "docSummary": "Primary entry point for creating a TUN interface on macOS. Manages full initialization sequence: kernel control socket creation, interface naming, and MTU configuration. Core function for establishing user-space tunnel connectivity.",
+        "keyConcepts": [
+          "tun-interface",
+          "kernel-control",
+          "macos-networking",
+          "interface-creation"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "127506fc97ccaf3a": {
+      "bodyHash": "5920cd7e67b3bff7",
+      "summary": {
+        "summary": "Assigns IP address, destination, and netmask to a TUN interface via ioctl socket calls to the kernel networking stack.",
+        "docSummary": "Configures layer-3 addressing on a TUN interface including IP address, destination, and subnet mask. Used during interface initialization to enable packet routing with proper addressing.",
+        "keyConcepts": [
+          "address-configuration",
+          "ioctl",
+          "ip-addressing"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "e48a674cbeabeaa2": {
+      "bodyHash": "0a3105da660e7503",
+      "summary": {
+        "summary": "Sets the Maximum Transmission Unit size for a TUN interface via ioctl to control maximum packet transmission size.",
+        "docSummary": "Configures the Maximum Transmission Unit for a TUN interface. Sets the largest packet size the interface can transmit, affecting fragmentation behavior and throughput optimization.",
+        "keyConcepts": [
+          "mtu-configuration",
+          "ioctl",
+          "network-tuning"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "7cbd4619bc267356": {
+      "bodyHash": "53c09324c3d7b372",
+      "summary": {
+        "summary": "Reads an IP packet from TUN file descriptor, strips the 4-byte AF header prepended by utun, returns raw IP packet payload.",
+        "docSummary": "Reads outbound IP packets from the TUN interface. Transparently handles macOS utun's protocol-family header prefix, presenting clean IP packets to the caller without protocol metadata.",
+        "keyConcepts": [
+          "packet-reading",
+          "tun-io",
+          "protocol-handling"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "3af61d4da409ebdf": {
+      "bodyHash": "1218937fbe99d9df",
+      "summary": {
+        "summary": "Writes an IP packet to TUN after prepending 4-byte AF header determined from IP version field in packet header.",
+        "docSummary": "Sends inbound IP packets to the TUN interface. Automatically detects IPv4/IPv6 from packet header and prepends required protocol-family marker for correct macOS utun routing.",
+        "keyConcepts": [
+          "packet-writing",
+          "tun-io",
+          "protocol-detection"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "e37bf18308b40d02": {
+      "bodyHash": "adbe75403b955ecb",
+      "summary": {
+        "summary": "Wraps libc setsockopt to set socket options on a file descriptor with type safety",
+        "docSummary": "Type-safe wrapper around the libc setsockopt system call for configuring XDP ring buffer socket options. Enables setting socket parameters required for XDP packet capture initialization.",
+        "keyConcepts": [
+          "socket-configuration",
+          "libc-wrapper",
+          "unsafe-binding",
+          "type-safe-wrapper"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "ab3dc13b166f9895": {
+      "bodyHash": "11d1f022fd6877b7",
+      "summary": {
+        "summary": "Maps an XDP ring buffer into userspace memory using mmap with error handling",
+        "docSummary": "Allocates and maps an XDP ring buffer into shared userspace memory. This function performs the critical mmap system call that enables zero-copy packet access between kernel and userspace for XDP operations.",
+        "keyConcepts": [
+          "memory-mapping",
+          "ring-buffer",
+          "xdp",
+          "zero-copy"
+        ],
+        "behavioralProfile": "sideEffectful"
+      }
+    },
+    "84983b184b02fd07": {
+      "bodyHash": "36b886b58d44f637",
+      "summary": {
+        "summary": "Constructs a Ring struct from a base pointer by calculating component offsets",
+        "docSummary": "Initializes an XDP Ring structure by computing pointers to producer, consumer, flags, and descriptor regions within a memory-mapped buffer. Used after mmap_ring to establish the ring buffer abstraction for packet handling.",
+        "keyConcepts": [
+          "ring-buffer",
+          "pointer-arithmetic",
+          "struct-initialization",
+          "xdp"
+        ],
+        "behavioralProfile": "pure"
+      }
+    },
+    "b710bf721b034ef5": {
+      "bodyHash": "8ff554127d2c463e",
+      "summary": {
+        "summary": "Converts a network interface name to its system index using libc",
+        "docSummary": "Maps human-readable network interface names to their numeric system indices. Essential for identifying target network interfaces for XDP program attachment and packet filtering.",
+        "keyConcepts": [
+          "network-interface",
+          "name-resolution",
+          "system-call",
+          "libc-wrapper"
+        ],
+        "behavioralProfile": "utility"
+      }
+    }
+  }
+}

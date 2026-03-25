@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "file": "rustguard-crypto/src/lib.rs",
+  "hash": "615a7b2d0d10e63ed255ff2c13ecb91c5cebbbfc39bd68e404f6f27b8a3021ee",
+  "symbols": [
+    {
+      "name": "CONSTRUCTION",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 16,
+      "line_end": 16
+    },
+    {
+      "name": "IDENTIFIER",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 17,
+      "line_end": 17
+    },
+    {
+      "name": "LABEL_MAC1",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 18,
+      "line_end": 18
+    },
+    {
+      "name": "LABEL_COOKIE",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 19,
+      "line_end": 19
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

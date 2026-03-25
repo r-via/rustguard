@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "file": "rustguard-crypto/src/x25519.rs",
+  "hash": "00dbea9729616b00b351844419c74f43fa34f5163876584c78cb762961eddbea",
+  "symbols": [
+    {
+      "name": "StaticSecret",
+      "kind": "class",
+      "exported": true,
+      "line_start": 7,
+      "line_end": 7
+    },
+    {
+      "name": "EphemeralSecret",
+      "kind": "class",
+      "exported": true,
+      "line_start": 11,
+      "line_end": 11
+    },
+    {
+      "name": "PublicKey",
+      "kind": "class",
+      "exported": true,
+      "line_start": 16,
+      "line_end": 16
+    },
+    {
+      "name": "SharedSecret",
+      "kind": "class",
+      "exported": true,
+      "line_start": 28,
+      "line_end": 28
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "file": "rustguard-enroll/src/packet.rs",
+  "hash": "5335df6a372db7f20cd9d50a7096aef863f5cbb6544a5eb83de1ef58570d1914",
+  "symbols": [
+    {
+      "name": "ParsedUdp",
+      "kind": "class",
+      "exported": true,
+      "line_start": 9,
+      "line_end": 12
+    },
+    {
+      "name": "parse_eth_udp",
+      "kind": "function",
+      "exported": true,
+      "line_start": 16,
+      "line_end": 28
+    },
+    {
+      "name": "parse_ipv4_udp",
+      "kind": "function",
+      "exported": false,
+      "line_start": 30,
+      "line_end": 52
+    },
+    {
+      "name": "parse_ipv6_udp",
+      "kind": "function",
+      "exported": false,
+      "line_start": 54,
+      "line_end": 77
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

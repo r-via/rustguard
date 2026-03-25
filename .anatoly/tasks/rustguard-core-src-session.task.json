@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "file": "rustguard-core/src/session.rs",
+  "hash": "4f2e4994ebb83634e67186fb560bc76e1c134fddb3c01ba5f8d6f2ff1fe17a3e",
+  "symbols": [
+    {
+      "name": "TransportSession",
+      "kind": "class",
+      "exported": true,
+      "line_start": 13,
+      "line_end": 30
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

@@ -1,0 +1,815 @@
+# Axis: utility
+
+## User
+
+## File: `rustguard-core/src/lib.rs`
+## Language: rust
+
+```rust
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
+pub mod cookie;
+pub mod handshake;
+pub mod messages;
+pub mod replay;
+pub mod session;
+pub mod timers;
+
+pub use rustguard_crypto as crypto;
+
+```
+
+## Symbols to evaluate
+
+
+Evaluate the utility of each symbol and output the JSON.
+
+## System (init)
+
+**Model:** claude-haiku-4-5-20251001
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+```json
+{
+  "symbols": [
+    {
+      "name": "cookie",
+      "line_start": 4,
+      "line_end": 4,
+      "utility": "USED",
+      "confidence": 70,
+      "detail": "Public module declaration in lib.rs; exported as part of library's public API"
+    },
+    {
+      "name": "handshake",
+      "line_start": 5,
+      "line_end": 5,
+      "utility": "USED",
+      "confidence": 70,
+      "detail": "Public module declaration in lib.rs; exported as part of library's public API"
+    },
+    {
+      "name": "messages",
+      "line_start": 6,
+      "line_end": 6,
+      "utility": "USED",
+      "confidence": 70,
+      "detail": "Public module declaration in lib.rs; exported as part of library's public API"
+    },
+    {
+      "name": "replay",
+      "line_start": 7,
+      "line_end": 7,
+      "utility": "USED",
+      "confidence": 70,
+      "detail": "Public module declaration in lib.rs; exported as part of library's public API"
+    },
+    {
+      "name": "session",
+      "line_start": 8,
+      "line_end": 8,
+      "utility": "USED",
+      "confidence": 70,
+      "detail": "Public module declaration in lib.rs; exported as part of library's public API"
+    },
+    {
+      "name": "timers",
+      "line_start": 9,
+      "line_end": 9,
+      "utility": "USED",
+      "confidence": 70,
+      "detail": "Public module declaration in lib.rs; exported as part of library's public API"
+    },
+    {
+      "name": "crypto",
+      "line_start": 11,
+      "line_end": 11,
+      "utility": "USED",
+      "confidence": 70,
+      "detail": "Public re-export of rustguard_crypto providing convenient namespace access"
+    }
+  ]
+}
+```
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0170 | **Duration:** 22.3s
+
+
+---
+
+# Axis: duplication
+
+## User
+
+## File: `rustguard-core/src/lib.rs`
+## Language: rust
+
+```rust
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
+pub mod cookie;
+pub mod handshake;
+pub mod messages;
+pub mod replay;
+pub mod session;
+pub mod timers;
+
+pub use rustguard_crypto as crypto;
+
+```
+
+## Symbols to evaluate
+
+
+## RAG — Semantic Duplication
+
+No RAG data available. Mark all symbols as UNIQUE (confidence: 90).
+
+Evaluate the duplication of each symbol and output the JSON.
+
+## System (init)
+
+**Model:** claude-haiku-4-5-20251001
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+```json
+{
+  "symbols": []
+}
+```
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0060 | **Duration:** 5.7s
+
+
+---
+
+# Axis: correction
+
+## User
+
+## File: `rustguard-core/src/lib.rs`
+## Language: rust
+
+```rust
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
+pub mod cookie;
+pub mod handshake;
+pub mod messages;
+pub mod replay;
+pub mod session;
+pub mod timers;
+
+pub use rustguard_crypto as crypto;
+
+```
+
+## Symbols to evaluate
+
+
+Identify any bugs, logic errors, or correctness issues and output the JSON.
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+```json
+{
+  "symbols": [],
+  "actions": []
+}
+```
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0149 | **Duration:** 1.9s
+
+
+---
+
+# Axis: overengineering
+
+## User
+
+## File: `rustguard-core/src/lib.rs`
+## Language: rust
+
+```rust
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
+pub mod cookie;
+pub mod handshake;
+pub mod messages;
+pub mod replay;
+pub mod session;
+pub mod timers;
+
+pub use rustguard_crypto as crypto;
+
+```
+
+## Symbols to evaluate
+
+
+## Project Structure
+
+```
+├── rustguard-cli/
+│   └── src/
+│       └── main.rs
+├── rustguard-core/
+│   ├── src/
+│   │   ├── cookie.rs
+│   │   ├── handshake.rs
+│   │   ├── lib.rs
+│   │   ├── messages.rs
+│   │   ├── replay.rs
+│   │   ├── session.rs
+│   │   └── timers.rs
+│   └── tests/
+│       └── integration.rs
+├── rustguard-crypto/
+│   └── src/
+│       ├── aead.rs
+│       ├── blake2s.rs
+│       ├── lib.rs
+│       ├── tai64n.rs
+│       └── x25519.rs
+├── rustguard-daemon/
+│   └── src/
+│       ├── config.rs
+│       ├── lib.rs
+│       ├── peer.rs
+│       └── tunnel.rs
+├── rustguard-enroll/
+│   └── src/
+│       ├── client.rs
+│       ├── control.rs
+│       ├── fast_udp.rs
+│       ├── lib.rs
+│       ├── packet.rs
+│       ├── pool.rs
+│       ├── protocol.rs
+│       ├── server.rs
+│       └── state.rs
+├── rustguard-kmod/
+│   └── src/
+│       ├── allowedips.rs
+│       ├── cookie.rs
+│       ├── lib.rs
+│       ├── noise.rs
+│       ├── replay.rs
+│       └── timers.rs
+└── rustguard-tun/
+    ├── examples/
+    │   └── tun_echo.rs
+    └── src/
+        ├── bpf_loader.rs
+        ├── lib.rs
+        ├── linux_mq.rs
+        ├── linux.rs
+        ├── macos.rs
+        ├── uring.rs
+        └── xdp.rs
+```
+
+Use the project structure to detect excessive fragmentation:
+- Directory with only 1 file → potential fragmentation
+- More than 5 nesting levels → excessive structural complexity
+- Factory/adapter directories with ≤ 2 files → likely over-engineering
+These heuristics may increase a symbol's rating from LEAN to OVER.
+
+Evaluate the complexity of each symbol and output the JSON.
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+{"symbols":[]}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0183 | **Duration:** 1.9s
+
+
+---
+
+# Axis: tests
+
+## User
+
+## File: `rustguard-core/src/lib.rs`
+## Language: rust
+
+```rust
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
+pub mod cookie;
+pub mod handshake;
+pub mod messages;
+pub mod replay;
+pub mod session;
+pub mod timers;
+
+pub use rustguard_crypto as crypto;
+
+```
+
+## Symbols to evaluate
+
+
+## Test File
+
+No test file found for this source file.
+
+## Project Structure
+
+```
+├── rustguard-cli/
+│   └── src/
+│       └── main.rs
+├── rustguard-core/
+│   ├── src/
+│   │   ├── cookie.rs
+│   │   ├── handshake.rs
+│   │   ├── lib.rs
+│   │   ├── messages.rs
+│   │   ├── replay.rs
+│   │   ├── session.rs
+│   │   └── timers.rs
+│   └── tests/
+│       └── integration.rs
+├── rustguard-crypto/
+│   └── src/
+│       ├── aead.rs
+│       ├── blake2s.rs
+│       ├── lib.rs
+│       ├── tai64n.rs
+│       └── x25519.rs
+├── rustguard-daemon/
+│   └── src/
+│       ├── config.rs
+│       ├── lib.rs
+│       ├── peer.rs
+│       └── tunnel.rs
+├── rustguard-enroll/
+│   └── src/
+│       ├── client.rs
+│       ├── control.rs
+│       ├── fast_udp.rs
+│       ├── lib.rs
+│       ├── packet.rs
+│       ├── pool.rs
+│       ├── protocol.rs
+│       ├── server.rs
+│       └── state.rs
+├── rustguard-kmod/
+│   └── src/
+│       ├── allowedips.rs
+│       ├── cookie.rs
+│       ├── lib.rs
+│       ├── noise.rs
+│       ├── replay.rs
+│       └── timers.rs
+└── rustguard-tun/
+    ├── examples/
+    │   └── tun_echo.rs
+    └── src/
+        ├── bpf_loader.rs
+        ├── lib.rs
+        ├── linux_mq.rs
+        ├── linux.rs
+        ├── macos.rs
+        ├── uring.rs
+        └── xdp.rs
+```
+
+Evaluate the test quality for each symbol and output the JSON.
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+{"symbols":[]}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0180 | **Duration:** 4.1s
+
+
+---
+
+# Axis: best_practices
+
+## User
+
+## File: `rustguard-core/src/lib.rs`
+## Language: rust
+## Context: utility
+
+```rust
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
+pub mod cookie;
+pub mod handshake;
+pub mod messages;
+pub mod replay;
+pub mod session;
+pub mod timers;
+
+pub use rustguard_crypto as crypto;
+
+```
+
+## File stats
+- Lines: 12
+- Symbols: 0
+- Exported symbols: 0
+
+## Project Structure
+
+```
+├── rustguard-cli/
+│   └── src/
+│       └── main.rs
+├── rustguard-core/
+│   ├── src/
+│   │   ├── cookie.rs
+│   │   ├── handshake.rs
+│   │   ├── lib.rs
+│   │   ├── messages.rs
+│   │   ├── replay.rs
+│   │   ├── session.rs
+│   │   └── timers.rs
+│   └── tests/
+│       └── integration.rs
+├── rustguard-crypto/
+│   └── src/
+│       ├── aead.rs
+│       ├── blake2s.rs
+│       ├── lib.rs
+│       ├── tai64n.rs
+│       └── x25519.rs
+├── rustguard-daemon/
+│   └── src/
+│       ├── config.rs
+│       ├── lib.rs
+│       ├── peer.rs
+│       └── tunnel.rs
+├── rustguard-enroll/
+│   └── src/
+│       ├── client.rs
+│       ├── control.rs
+│       ├── fast_udp.rs
+│       ├── lib.rs
+│       ├── packet.rs
+│       ├── pool.rs
+│       ├── protocol.rs
+│       ├── server.rs
+│       └── state.rs
+├── rustguard-kmod/
+│   └── src/
+│       ├── allowedips.rs
+│       ├── cookie.rs
+│       ├── lib.rs
+│       ├── noise.rs
+│       ├── replay.rs
+│       └── timers.rs
+└── rustguard-tun/
+    ├── examples/
+    │   └── tun_echo.rs
+    └── src/
+        ├── bpf_loader.rs
+        ├── lib.rs
+        ├── linux_mq.rs
+        ├── linux.rs
+        ├── macos.rs
+        ├── uring.rs
+        └── xdp.rs
+```
+
+Use the project structure above to evaluate rule 11 (import organization) and detect file placement inconsistencies. If the file is in an unexpected directory given the project conventions, flag it as WARN for the most relevant rule.
+
+Evaluate all 17 rules and output the JSON.
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+{
+  "score": 9.5,
+  "rules": [
+    {
+      "rule_id": 1,
+      "rule_name": "No unwrap in production code",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "detail": "No `.unwrap()` calls present anywhere in this file."
+    },
+    {
+      "rule_id": 2,
+      "rule_name": "No unsafe blocks without justification comment",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "detail": "No `unsafe` blocks present in this file."
+    },
+    {
+      "rule_id": 3,
+      "rule_name": "Proper error handling with Result/Option",
+      "status": "PASS",
+      "severity": "HIGH",
+      "detail": "No functions are defined in this lib root, so no error-handling surface exists here."
+    },
+    {
+      "rule_id": 4,
+      "rule_name": "Derive common traits on public types",
+      "status": "PASS",
+      "severity": "MEDIUM",
+      "detail": "No types are declared in this file; trait derivations are not applicable."
+    },
+    {
+      "rule_id": 5,
+      "rule_name": "Lifetime annotations explicit where needed",
+      "status": "PASS",
+      "severity": "MEDIUM",
+      "detail": "No functions or types with lifetime parameters are present in this file."
+    },
+    {
+      "rule_id": 6,
+      "rule_name": "Use clippy idioms",
+      "status": "PASS",
+      "severity": "MEDIUM",
+      "detail": "No clippy-relevant patterns (manual loops, unnecessary clones, etc.) exist in this declaration-only file."
+    },
+    {
+      "rule_id": 7,
+      "rule_name": "No panic! in library/production code",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "detail": "No `panic!` macros present. This is a library crate root with only module declarations."
+    },
+    {
+      "rule_id": 8,
+      "rule_name": "Module organization",
+      "status": "PASS",
+      "severity": "MEDIUM",
+      "detail": "Module hierarchy is clean and logical: six domain-specific public modules (cookie, handshake, messages, replay, session, timers) are properly declared with `pub mod`, and `rustguard_crypto` is cleanly re-exported as `crypto` via `pub use`. The `no_std` conditional attribute and explicit `extern crate alloc` are idiomatic for a portable library crate."
+    },
+    {
+      "rule_id": 9,
+      "rule_name": "Documentation comments on public items",
+      "status": "WARN",
+      "severity": "MEDIUM",
+      "detail": "None of the six public module declarations or the `pub use rustguard_crypto as crypto` re-export have `///` documentation comments. As the public API entry point for the crate, each public item should carry at least a one-line summary to aid users of the library.",
+      "lines": "L5-L11"
+    },
+    {
+      "rule_id": 10,
+      "rule_name": "No hardcoded secrets or credentials",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "detail": "No secrets, keys, tokens, or credentials present in this file."
+    },
+    {
+      "rule_id": 11,
+      "rule_name": "Memory safety",
+      "status": "PASS",
+      "severity": "HIGH",
+      "detail": "No `mem::forget`, raw pointer manipulation, or `Drop` implementations in this file. The `no_std` + `alloc` pattern is correctly applied for heap usage without the standard library."
+    },
+    {
+      "rule_id": 12,
+      "rule_name": "Concurrency safety",
+      "status": "PASS",
+      "severity": "HIGH",
+      "detail": "No concurrency primitives, shared state, or thread-related constructs are introduced in this file. `Send`/`Sync` bounds are not applicable at this layer."
+    }
+  ],
+  "suggestions": [
+    {
+      "description": "Add `///` doc comments to each public module declaration and the crypto re-export so that `cargo doc` generates meaningful API documentation for library consumers.",
+      "before": "pub mod cookie;\npub mod handshake;\npub mod messages;\npub mod replay;\npub mod session;\npub mod timers;\n\npub use rustguard_crypto as crypto;",
+      "after": "/// Cookie reply and MAC computation utilities.\npub mod cookie;\n\n/// Noise protocol handshake state machine.\npub mod handshake;\n\n/// Wire-format message types and serialization.\npub mod messages;\n\n/// Anti-replay sliding-window counter.\npub mod replay;\n\n/// Established session key material and state.\npub mod session;\n\n/// Keepalive and expiry timer logic.\npub mod timers;\n\n/// Re-exported cryptographic primitives (AEAD, X25519, BLAKE2s, TAI64N).\npub use rustguard_crypto as crypto;"
+    }
+  ]
+}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0708 | **Duration:** 32.6s
+
+
+---
+
+# Axis: documentation
+
+## User
+
+## File: `rustguard-core/src/lib.rs`
+## Language: rust
+
+```rust
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
+pub mod cookie;
+pub mod handshake;
+pub mod messages;
+pub mod replay;
+pub mod session;
+pub mod timers;
+
+pub use rustguard_crypto as crypto;
+
+```
+
+## Symbols to evaluate
+
+
+## Documentation Directory
+
+No /docs/ directory found — evaluate JSDoc only, skip concept coverage.
+
+## Internal Reference Documentation (from .anatoly/docs/ — DO NOT use for scoring)
+
+> These pages are auto-generated internal references. They provide context but should NOT influence DOCUMENTED/COVERED status.
+
+### `.anatoly/docs/05-Development/02-Build-and-Test.md`
+
+## Linting
+
+### Clippy
+
+```bash
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+### Formatting
+
+Check formatting without modifying files:
+
+```bash
+cargo fmt --all -- --check
+```
+
+Apply formatting:
+
+```bash
+cargo fmt --all
+```
+
+### `.anatoly/docs/02-Architecture/02-Core-Concepts.md`
+
+## Kernel Module (`rustguard-kmod`)
+
+An out-of-tree Linux kernel module written in Rust with a C shim, targeting kernel 6.10+. Implements the WireGuard data path inside the kernel to eliminate the TUN overhead present in userspace — packets are encrypted and decrypted without a userspace round trip.
+
+---
+
+Evaluate documentation for each symbol and output the JSON.
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+{
+  "symbols": [
+    {
+      "name": "cookie",
+      "line_start": 5,
+      "line_end": 5,
+      "documentation": "UNDOCUMENTED",
+      "confidence": 95,
+      "detail": "Public module `cookie` has no `///` or `//!` doc comment describing its purpose, contents, or usage."
+    },
+    {
+      "name": "handshake",
+      "line_start": 6,
+      "line_end": 6,
+      "documentation": "UNDOCUMENTED",
+      "confidence": 95,
+      "detail": "Public module `handshake` has no `///` or `//!` doc comment describing its purpose, contents, or usage."
+    },
+    {
+      "name": "messages",
+      "line_start": 7,
+      "line_end": 7,
+      "documentation": "UNDOCUMENTED",
+      "confidence": 95,
+      "detail": "Public module `messages` has no `///` or `//!` doc comment describing its purpose, contents, or usage."
+    },
+    {
+      "name": "replay",
+      "line_start": 8,
+      "line_end": 8,
+      "documentation": "UNDOCUMENTED",
+      "confidence": 95,
+      "detail": "Public module `replay` has no `///` or `//!` doc comment describing its purpose, contents, or usage."
+    },
+    {
+      "name": "session",
+      "line_start": 9,
+      "line_end": 9,
+      "documentation": "UNDOCUMENTED",
+      "confidence": 95,
+      "detail": "Public module `session` has no `///` or `//!` doc comment describing its purpose, contents, or usage."
+    },
+    {
+      "name": "timers",
+      "line_start": 10,
+      "line_end": 10,
+      "documentation": "UNDOCUMENTED",
+      "confidence": 95,
+      "detail": "Public module `timers` has no `///` or `//!` doc comment describing its purpose, contents, or usage."
+    },
+    {
+      "name": "crypto",
+      "line_start": 12,
+      "line_end": 12,
+      "documentation": "UNDOCUMENTED",
+      "confidence": 95,
+      "detail": "Public re-export `pub use rustguard_crypto as crypto` has no `///` doc comment explaining what the crate provides or how consumers should use it."
+    }
+  ],
+  "docs_coverage": {
+    "concepts": [],
+    "score_pct": 0
+  }
+}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0521 | **Duration:** 19.7s
+
+
+---
+
+# Deliberation Pass — SKIPPED
+
+File is CLEAN with high confidence.

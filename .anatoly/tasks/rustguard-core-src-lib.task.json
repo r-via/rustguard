@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "file": "rustguard-core/src/lib.rs",
+  "hash": "a08dd372aa3e8009cb33614f81313046948ef0b36e7683684281ba27c0f13752",
+  "symbols": [],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

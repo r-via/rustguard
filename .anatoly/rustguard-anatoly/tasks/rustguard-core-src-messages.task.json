@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "file": "rustguard-core/src/messages.rs",
+  "hash": "e2bb85f18797ed3a44fd57a5e98e3200c59936381f48f9c27c2aff776652cb3e",
+  "symbols": [
+    {
+      "name": "MSG_INITIATION",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 5,
+      "line_end": 5
+    },
+    {
+      "name": "MSG_RESPONSE",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 6,
+      "line_end": 6
+    },
+    {
+      "name": "MSG_COOKIE_REPLY",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 7,
+      "line_end": 7
+    },
+    {
+      "name": "MSG_TRANSPORT",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 8,
+      "line_end": 8
+    },
+    {
+      "name": "Initiation",
+      "kind": "class",
+      "exported": true,
+      "line_start": 22,
+      "line_end": 29
+    },
+    {
+      "name": "INITIATION_SIZE",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 31,
+      "line_end": 31
+    },
+    {
+      "name": "Response",
+      "kind": "class",
+      "exported": true,
+      "line_start": 45,
+      "line_end": 52
+    },
+    {
+      "name": "RESPONSE_SIZE",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 54,
+      "line_end": 54
+    },
+    {
+      "name": "Transport",
+      "kind": "class",
+      "exported": true,
+      "line_start": 64,
+      "line_end": 68
+    },
+    {
+      "name": "CookieReply",
+      "kind": "class",
+      "exported": true,
+      "line_start": 79,
+      "line_end": 83
+    },
+    {
+      "name": "COOKIE_REPLY_SIZE",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 85,
+      "line_end": 85
+    },
+    {
+      "name": "TRANSPORT_HEADER_SIZE",
+      "kind": "constant",
+      "exported": true,
+      "line_start": 87,
+      "line_end": 87
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

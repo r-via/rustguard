@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "file": "rustguard-tun/src/linux.rs",
+  "hash": "44d5df1d3d248d528ebed97d92f7e50d59cddcf50492e795e4a1db94010dd3f6",
+  "symbols": [
+    {
+      "name": "TUNSETIFF",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 12,
+      "line_end": 12
+    },
+    {
+      "name": "SIOCSIFADDR",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 13,
+      "line_end": 13
+    },
+    {
+      "name": "SIOCSIFDSTADDR",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 14,
+      "line_end": 14
+    },
+    {
+      "name": "SIOCSIFNETMASK",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 15,
+      "line_end": 15
+    },
+    {
+      "name": "SIOCSIFMTU",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 16,
+      "line_end": 16
+    },
+    {
+      "name": "SIOCSIFFLAGS",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 17,
+      "line_end": 17
+    },
+    {
+      "name": "SIOCGIFFLAGS",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 18,
+      "line_end": 18
+    },
+    {
+      "name": "IFF_TUN",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 21,
+      "line_end": 21
+    },
+    {
+      "name": "IFF_NO_PI",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 22,
+      "line_end": 22
+    },
+    {
+      "name": "IFF_UP",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 25,
+      "line_end": 25
+    },
+    {
+      "name": "IFNAMSIZ",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 27,
+      "line_end": 27
+    },
+    {
+      "name": "IfreqFlags",
+      "kind": "class",
+      "exported": false,
+      "line_start": 32,
+      "line_end": 36
+    },
+    {
+      "name": "IfreqAddr",
+      "kind": "class",
+      "exported": false,
+      "line_start": 39,
+      "line_end": 42
+    },
+    {
+      "name": "IfreqMtu",
+      "kind": "class",
+      "exported": false,
+      "line_start": 45,
+      "line_end": 49
+    },
+    {
+      "name": "last_os_error",
+      "kind": "function",
+      "exported": false,
+      "line_start": 51,
+      "line_end": 53
+    },
+    {
+      "name": "close_and_error",
+      "kind": "function",
+      "exported": false,
+      "line_start": 55,
+      "line_end": 59
+    },
+    {
+      "name": "make_sockaddr_in",
+      "kind": "function",
+      "exported": false,
+      "line_start": 61,
+      "line_end": 70
+    },
+    {
+      "name": "set_name",
+      "kind": "function",
+      "exported": false,
+      "line_start": 72,
+      "line_end": 76
+    },
+    {
+      "name": "create",
+      "kind": "function",
+      "exported": true,
+      "line_start": 78,
+      "line_end": 122
+    },
+    {
+      "name": "configure_interface",
+      "kind": "function",
+      "exported": false,
+      "line_start": 124,
+      "line_end": 189
+    },
+    {
+      "name": "read",
+      "kind": "function",
+      "exported": true,
+      "line_start": 193,
+      "line_end": 199
+    },
+    {
+      "name": "write",
+      "kind": "function",
+      "exported": true,
+      "line_start": 203,
+      "line_end": 212
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

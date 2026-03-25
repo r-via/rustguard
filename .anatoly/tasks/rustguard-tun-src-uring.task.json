@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "file": "rustguard-tun/src/uring.rs",
+  "hash": "61623636aae71ccd04371c00cc44c96b4812dc76f643113f19ccb628bc89b21b",
+  "symbols": [
+    {
+      "name": "NUM_BUFS",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 19,
+      "line_end": 19
+    },
+    {
+      "name": "BUF_SIZE",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 21,
+      "line_end": 21
+    },
+    {
+      "name": "RING_ENTRIES",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 23,
+      "line_end": 23
+    },
+    {
+      "name": "BufferPool",
+      "kind": "class",
+      "exported": true,
+      "line_start": 26,
+      "line_end": 31
+    },
+    {
+      "name": "Completion",
+      "kind": "class",
+      "exported": true,
+      "line_start": 86,
+      "line_end": 93
+    },
+    {
+      "name": "UringTun",
+      "kind": "class",
+      "exported": true,
+      "line_start": 96,
+      "line_end": 102
+    },
+    {
+      "name": "READ_FLAG",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 105,
+      "line_end": 105
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

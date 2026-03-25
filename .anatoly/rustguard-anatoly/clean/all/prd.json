@@ -1,0 +1,3003 @@
+{
+  "project": "Anatoly Clean",
+  "branchName": "clean/anatoly-all",
+  "description": "Automated remediation of 214 findings from all",
+  "userStories": [
+    {
+      "id": "FIX-001",
+      "actId": "ACT-8bab2a-1",
+      "title": "Fix: In cmd_serve, replace `args.get(i).cloned().unwrap_or_default()` for --token (line 86) with an explicit check: if args.get(i) is None or the value starts with '-', print a usage error and exit. An empty token disables authentication on the enrollment server.",
+      "description": "Resolve high finding in `rustguard-cli/src/main.rs`: In cmd_serve, replace `args.get(i).cloned().unwrap_or_default()` for --token (line 86) with an explicit check: if args.get(i) is None or the value starts with '-', print a usage error and exit. An empty token disables authentication on the enrollment server.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-002",
+      "actId": "ACT-fb2f2d-1",
+      "title": "Fix: The no_std elapsed_since always returns Duration::ZERO, rendering all time-based SessionTimers query methods (needs_rekey, is_expired, is_dead, needs_keepalive, should_retry_handshake, handshake_timed_out) non-functional. Add no_std-aware _at(now_ns: u64) variants for each of these query methods that compute the duration inline from stored u64 timestamp fields, mirroring the _at pattern already used for session_started_at, packet_sent_at, and packet_received_at.",
+      "description": "Resolve high finding in `rustguard-core/src/timers.rs`: The no_std elapsed_since always returns Duration::ZERO, rendering all time-based SessionTimers query methods (needs_rekey, is_expired, is_dead, needs_keepalive, should_retry_handshake, handshake_timed_out) non-functional. Add no_std-aware _at(now_ns: u64) variants for each of these query methods that compute the duration inline from stored u64 timestamp fields, mirroring the _at pattern already used for session_started_at, packet_sent_at, and packet_received_at.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-003",
+      "actId": "ACT-efa3ec-2",
+      "title": "Fix: open_to must guard against ct_len > buf.len() before indexing buf[..ct_len]. Add `if ct_len > buf.len() { return None; }` immediately after the AEAD_TAG_LEN check to prevent a panic when adversarial or malformed inputs arrive with an inflated ct_len.",
+      "description": "Resolve high finding in `rustguard-crypto/src/aead.rs`: open_to must guard against ct_len > buf.len() before indexing buf[..ct_len]. Add `if ct_len > buf.len() { return None; }` immediately after the AEAD_TAG_LEN check to prevent a panic when adversarial or malformed inputs arrive with an inflated ct_len.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-004",
+      "actId": "ACT-8bab2a-2",
+      "title": "Fix: In cmd_join, replace `args.get(i).cloned().unwrap_or_default()` for --token (line 163) with an explicit missing-value check; an empty token string is forwarded to the client and bypasses token validation.",
+      "description": "Resolve medium finding in `rustguard-cli/src/main.rs`: In cmd_join, replace `args.get(i).cloned().unwrap_or_default()` for --token (line 163) with an explicit missing-value check; an empty token string is forwarded to the client and bypasses token validation.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-005",
+      "actId": "ACT-fb2f2d-2",
+      "title": "Fix: needs_keepalive incorrectly falls back to last_send_time = received when last_sent is None, creating contradictory guard conditions. Fix by handling the None case explicitly: if last_sent is None and elapsed_since(received) >= interval, return true; otherwise when last_sent is Some, apply the dual-condition check (elapsed_since(sent) >= interval && elapsed_since(received) < interval).",
+      "description": "Resolve medium finding in `rustguard-core/src/timers.rs`: needs_keepalive incorrectly falls back to last_send_time = received when last_sent is None, creating contradictory guard conditions. Fix by handling the None case explicitly: if last_sent is None and elapsed_since(received) >= interval, return true; otherwise when last_sent is Some, apply the dual-condition check (elapsed_since(sent) >= interval && elapsed_since(received) < interval).",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-006",
+      "actId": "ACT-efa3ec-1",
+      "title": "Fix: MAX_PACKET_SIZE uses 1500 in its expression but the doc comment documents the limit as 'MTU 1420 + tag'. Change the constant to 1420 + AEAD_TAG_LEN (= 1436) to match the stated WireGuard transport MTU, or update the comment to reflect that 1500 is intentional (e.g. Ethernet MTU before WireGuard header subtraction). As-is, callers using this constant for size validation will accept oversized packets.",
+      "description": "Resolve medium finding in `rustguard-crypto/src/aead.rs`: MAX_PACKET_SIZE uses 1500 in its expression but the doc comment documents the limit as 'MTU 1420 + tag'. Change the constant to 1420 + AEAD_TAG_LEN (= 1436) to match the stated WireGuard transport MTU, or update the comment to reflect that 1500 is intentional (e.g. Ethernet MTU before WireGuard header subtraction). As-is, callers using this constant for size validation will accept oversized packets.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-007",
+      "actId": "ACT-ca1d92-1",
+      "title": "Fix: Introduce a shutdown mechanism so `running` can be set to `false`: install a Ctrl+C / SIGTERM handler (e.g. via the `ctrlc` crate) that calls `running.store(false, Ordering::SeqCst)`, or propagate errors from the worker threads and store `false` on exit. Without this, both `join()` calls block forever and the function never returns.",
+      "description": "Resolve medium finding in `rustguard-enroll/src/client.rs`: Introduce a shutdown mechanism so `running` can be set to `false`: install a Ctrl+C / SIGTERM handler (e.g. via the `ctrlc` crate) that calls `running.store(false, Ordering::SeqCst)`, or propagate errors from the worker threads and store `false` on exit. Without this, both `join()` calls block forever and the function never returns.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-008",
+      "actId": "ACT-ca1d92-3",
+      "title": "Fix: Add a `#[cfg(not(any(target_os = \"macos\", target_os = \"linux\")))]` arm in `add_route` that either emits `compile_error!(\"add_route: unsupported OS\")` or a runtime no-op, to prevent 'cannot find value `result`' compilation failure on other targets.",
+      "description": "Resolve medium finding in `rustguard-enroll/src/client.rs`: Add a `#[cfg(not(any(target_os = \"macos\", target_os = \"linux\")))]` arm in `add_route` that either emits `compile_error!(\"add_route: unsupported OS\")` or a runtime no-op, to prevent 'cannot find value `result`' compilation failure on other targets.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-009",
+      "actId": "ACT-9105c7-1",
+      "title": "Fix: In hash(), change chunks.len() as u32 to chunks.len().min(4) as u32 when passing num_chunks to wg_blake2s_hash. The ptrs/lens arrays have a fixed capacity of 4; passing a larger value causes the C function to read beyond the stack-allocated arrays, which is undefined behaviour.",
+      "description": "Resolve medium finding in `rustguard-kmod/src/cookie.rs`: In hash(), change chunks.len() as u32 to chunks.len().min(4) as u32 when passing num_chunks to wg_blake2s_hash. The ptrs/lens arrays have a fixed capacity of 4; passing a larger value causes the C function to read beyond the stack-allocated arrays, which is undefined behaviour.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-010",
+      "actId": "ACT-62f2c7-1",
+      "title": "Fix: Fix file descriptor leak in load_and_attach: xsks_map_fd is not closed when parse_and_patch_elf or bpf_prog_load fails via ?. Both xsks_map_fd and prog_fd are not closed when attach_xdp fails. Use an explicit close guard (e.g., scopeguard crate, or a local struct with Drop) so that partially acquired FDs are always released on error paths.",
+      "description": "Resolve medium finding in `rustguard-tun/src/bpf_loader.rs`: Fix file descriptor leak in load_and_attach: xsks_map_fd is not closed when parse_and_patch_elf or bpf_prog_load fails via ?. Both xsks_map_fd and prog_fd are not closed when attach_xdp fails. Use an explicit close guard (e.g., scopeguard crate, or a local struct with Drop) so that partially acquired FDs are always released on error paths.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-011",
+      "actId": "ACT-b59607-1",
+      "title": "Fix: Pad IfreqMtu to 32 bytes by adding `_pad: [u8; 12]` (or `_pad: [u8; 12], initialised to zero`) so the kernel's copyin for SIOCSIFMTU reads only allocated memory instead of uninitialized stack bytes.",
+      "description": "Resolve medium finding in `rustguard-tun/src/macos.rs`: Pad IfreqMtu to 32 bytes by adding `_pad: [u8; 12]` (or `_pad: [u8; 12], initialised to zero`) so the kernel's copyin for SIOCSIFMTU reads only allocated memory instead of uninitialized stack bytes.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-012",
+      "actId": "ACT-b59607-2",
+      "title": "Fix: In configure_address, capture errno before calling close(): save `let err = io::Error::last_os_error();` immediately after the ioctl call, then close the socket, then return `Err(err)` if ret < 0. Mirrors the close_and_error helper already present in this file.",
+      "description": "Resolve medium finding in `rustguard-tun/src/macos.rs`: In configure_address, capture errno before calling close(): save `let err = io::Error::last_os_error();` immediately after the ioctl call, then close the socket, then return `Err(err)` if ret < 0. Mirrors the close_and_error helper already present in this file.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-013",
+      "actId": "ACT-b59607-3",
+      "title": "Fix: In set_mtu, apply the same errno-before-close fix: capture last_os_error() before libc::close(sock), then return that captured error if ret < 0.",
+      "description": "Resolve medium finding in `rustguard-tun/src/macos.rs`: In set_mtu, apply the same errno-before-close fix: capture last_os_error() before libc::close(sock), then return that captured error if ret < 0.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-014",
+      "actId": "ACT-8bab2a-3",
+      "title": "Fix: In cmd_serve, replace `args.get(i).cloned().unwrap_or_default()` for --pool (line 82) with an explicit missing-value check to produce a correct usage error instead of a misleading 'bad pool address' parse failure downstream.",
+      "description": "Resolve low finding in `rustguard-cli/src/main.rs`: In cmd_serve, replace `args.get(i).cloned().unwrap_or_default()` for --pool (line 82) with an explicit missing-value check to produce a correct usage error instead of a misleading 'bad pool address' parse failure downstream.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-015",
+      "actId": "ACT-8bab2a-4",
+      "title": "Fix: In cmd_serve, replace `args.get(i).cloned().unwrap_or_default()` for --xdp (line 93) with an explicit missing-value check to prevent an empty interface name from being silently passed to ServeConfig.",
+      "description": "Resolve low finding in `rustguard-cli/src/main.rs`: In cmd_serve, replace `args.get(i).cloned().unwrap_or_default()` for --xdp (line 93) with an explicit missing-value check to prevent an empty interface name from being silently passed to ServeConfig.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-016",
+      "actId": "ACT-fb2f2d-3",
+      "title": "Fix: The doc comment on REKEY_TIMEOUT incorrectly describes it as a keypair-age send threshold ('REJECT_AFTER_TIME + padding') rather than a between-attempt handshake retry interval. Correct the doc comment to match the actual usage in should_retry_handshake to prevent API misuse.",
+      "description": "Resolve low finding in `rustguard-core/src/timers.rs`: The doc comment on REKEY_TIMEOUT incorrectly describes it as a keypair-age send threshold ('REJECT_AFTER_TIME + padding') rather than a between-attempt handshake retry interval. Correct the doc comment to match the actual usage in should_retry_handshake to prevent API misuse.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-017",
+      "actId": "ACT-dbf131-1",
+      "title": "Fix: Replace the hardcoded default prefix '24' with a type-aware default: parse the address first, then choose '32' for IPv4 and '128' for IPv6 when no prefix notation is present—mirroring the logic already used in parse_cidr.",
+      "description": "Resolve low finding in `rustguard-daemon/src/config.rs`: Replace the hardcoded default prefix '24' with a type-aware default: parse the address first, then choose '32' for IPv4 and '128' for IPv6 when no prefix notation is present—mirroring the logic already used in parse_cidr.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-018",
+      "actId": "ACT-ca1d92-2",
+      "title": "Fix: Release the session Mutex guard before calling `udp_out.send_to()` in the outbound thread. Holding the lock across the send syscall blocks the inbound thread from acquiring the session lock for decryption during that window. Shadow the encrypted payload into a local variable, drop the guard, then send.",
+      "description": "Resolve low finding in `rustguard-enroll/src/client.rs`: Release the session Mutex guard before calling `udp_out.send_to()` in the outbound thread. Holding the lock across the send syscall blocks the inbound thread from acquiring the session lock for decryption during that window. Shadow the encrypted payload into a local variable, drop the guard, then send.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-019",
+      "actId": "ACT-18d76d-1",
+      "title": "Fix: In open_window, clamp or validate duration_secs before casting to i64. Values above i64::MAX wrap to negative when cast, producing a deadline in the past (enrollment silently never opens). Values in the range (i64::MAX - current_epoch_secs, i64::MAX] cause an i64 overflow that panics in debug builds and wraps to an incorrect deadline in release builds. Fix: use duration_secs.min(i64::MAX as u64) before casting, or perform checked/saturating arithmetic.",
+      "description": "Resolve low finding in `rustguard-enroll/src/control.rs`: In open_window, clamp or validate duration_secs before casting to i64. Values above i64::MAX wrap to negative when cast, producing a deadline in the past (enrollment silently never opens). Values in the range (i64::MAX - current_epoch_secs, i64::MAX] cause an i64 overflow that panics in debug builds and wraps to an incorrect deadline in release builds. Fix: use duration_secs.min(i64::MAX as u64) before casting, or perform checked/saturating arithmetic.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-020",
+      "actId": "ACT-62f2c7-2",
+      "title": "Fix: Fix NLMSG_ERROR bounds check in attach_xdp_netlink: change 'if n >= 16' to 'if n >= 20' before reading resp[16..19]. The nlmsgerr struct requires 20 bytes (nlmsghdr=16 + error=4); reading with only n>=16 causes a silent false-success when a short NLMSG_ERROR is received.",
+      "description": "Resolve low finding in `rustguard-tun/src/bpf_loader.rs`: Fix NLMSG_ERROR bounds check in attach_xdp_netlink: change 'if n >= 16' to 'if n >= 20' before reading resp[16..19]. The nlmsgerr struct requires 20 bytes (nlmsghdr=16 + error=4); reading with only n>=16 causes a silent false-success when a short NLMSG_ERROR is received.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-021",
+      "actId": "ACT-62f2c7-3",
+      "title": "Fix: Fix uninitialized trailing padding in BpfAttrProgLoad: the #[repr(C)] struct is 256 bytes (252 of named fields + 4 bytes compiler trailing padding). The trailing 4 bytes are not covered by _pad and may be uninitialized stack bytes when passed to the bpf() syscall. Zero-initialize the entire struct with MaybeUninit::zeroed() before filling fields, or extend _pad to [u8; 212] so std::mem::size_of equals exactly 256 with no implicit trailing padding.",
+      "description": "Resolve low finding in `rustguard-tun/src/bpf_loader.rs`: Fix uninitialized trailing padding in BpfAttrProgLoad: the #[repr(C)] struct is 256 bytes (252 of named fields + 4 bytes compiler trailing padding). The trailing 4 bytes are not covered by _pad and may be uninitialized stack bytes when passed to the bpf() syscall. Zero-initialize the entire struct with MaybeUninit::zeroed() before filling fields, or extend _pad to [u8; 212] so std::mem::size_of equals exactly 256 with no implicit trailing padding.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 21,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-022",
+      "actId": "ACT-c62ee4-1",
+      "title": "Fix: Add an 8-byte trailing padding field to IfreqAddr so its size equals sizeof(struct ifreq) = 40 bytes: add `_pad: [u8; 8]` after ifr_addr. Without it the kernel's copy_from_user reads 8 bytes beyond the struct allocation for every SIOCSIFADDR/SIOCSIFDSTADDR/SIOCSIFNETMASK ioctl call.",
+      "description": "Resolve low finding in `rustguard-tun/src/linux.rs`: Add an 8-byte trailing padding field to IfreqAddr so its size equals sizeof(struct ifreq) = 40 bytes: add `_pad: [u8; 8]` after ifr_addr. Without it the kernel's copy_from_user reads 8 bytes beyond the struct allocation for every SIOCSIFADDR/SIOCSIFDSTADDR/SIOCSIFNETMASK ioctl call.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 22,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-023",
+      "actId": "ACT-b59607-4",
+      "title": "Fix: In create, replace `num + 1` with `num.checked_add(1).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, \"utun unit number too large\"))?` to prevent silent wrap-to-zero or debug panic for extreme utun indices.",
+      "description": "Resolve low finding in `rustguard-tun/src/macos.rs`: In create, replace `num + 1` with `num.checked_add(1).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, \"utun unit number too large\"))?` to prevent silent wrap-to-zero or debug panic for extreme utun indices.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 23,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-024",
+      "actId": "ACT-7726d0-1",
+      "title": "Fix: StaticSecret::diffie_hellman does not check for an all-zero DH result. Add a constant-time zero check (e.g. shared.to_bytes().ct_eq(&[0u8;32])) and either return an error or panic/abort, as required by RFC 7748 and the WireGuard specification. Consider changing the return type to Result<SharedSecret, ZeroSharedSecret> to propagate the failure.",
+      "description": "Resolve medium finding in `rustguard-crypto/src/x25519.rs`: StaticSecret::diffie_hellman does not check for an all-zero DH result. Add a constant-time zero check (e.g. shared.to_bytes().ct_eq(&[0u8;32])) and either return an error or panic/abort, as required by RFC 7748 and the WireGuard specification. Consider changing the return type to Result<SharedSecret, ZeroSharedSecret> to propagate the failure.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 24,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-025",
+      "actId": "ACT-7726d0-2",
+      "title": "Fix: EphemeralSecret::diffie_hellman has the same missing all-zero DH output check. Apply the identical fix: constant-time comparison against [0u8;32] and surface a failure when the result is zero.",
+      "description": "Resolve medium finding in `rustguard-crypto/src/x25519.rs`: EphemeralSecret::diffie_hellman has the same missing all-zero DH output check. Apply the identical fix: constant-time comparison against [0u8;32] and surface a failure when the result is zero.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 25,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-026",
+      "actId": "ACT-4cf3f3-1",
+      "title": "Fix: After computing ihl at line 35, add 'if ihl < 20 { return None; }' to reject malformed IPv4 packets whose IHL field encodes a header smaller than the mandatory 20 bytes. Without this guard, packets with IHL values 0–4 are incorrectly parsed: the source port is read from within the IP header itself and the payload slice starts at the wrong offset, producing a structurally plausible but semantically wrong ParsedUdp.",
+      "description": "Resolve medium finding in `rustguard-enroll/src/packet.rs`: After computing ihl at line 35, add 'if ihl < 20 { return None; }' to reject malformed IPv4 packets whose IHL field encodes a header smaller than the mandatory 20 bytes. Without this guard, packets with IHL values 0–4 are incorrectly parsed: the source port is read from within the IP header itself and the payload slice starts at the wrong offset, producing a structurally plausible but semantically wrong ParsedUdp.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 26,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-027",
+      "actId": "ACT-a01ecd-2",
+      "title": "Fix: Add cidr range guards in insert_v4 (cidr > 32 → return early or return Err) and insert_v6 (cidr > 128). Without this, an out-of-range cidr silently builds phantom nodes beyond the address width; lookups can then match those phantom nodes for any address sharing all bits with the inserted prefix, corrupting the longest-prefix result.",
+      "description": "Resolve medium finding in `rustguard-kmod/src/allowedips.rs`: Add cidr range guards in insert_v4 (cidr > 32 → return early or return Err) and insert_v6 (cidr > 128). Without this, an out-of-range cidr silently builds phantom nodes beyond the address width; lookups can then match those phantom nodes for any address sharing all bits with the inserted prefix, corrupting the longest-prefix result.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 27,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-028",
+      "actId": "ACT-050448-2",
+      "title": "Fix: Fix is_dead() to measure inactivity, not session age: replace `self.session_established` with `self.last_received.max(self.last_sent)` (or equivalent) as the baseline for the DEAD_SESSION_TIMEOUT_NS comparison, so an actively-used session is not prematurely zeroed.",
+      "description": "Resolve medium finding in `rustguard-kmod/src/timers.rs`: Fix is_dead() to measure inactivity, not session age: replace `self.session_established` with `self.last_received.max(self.last_sent)` (or equivalent) as the baseline for the DEAD_SESSION_TIMEOUT_NS comparison, so an actively-used session is not prematurely zeroed.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 28,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-029",
+      "actId": "ACT-050448-3",
+      "title": "Fix: Fix needs_keepalive() fallback when last_sent == 0: replace `now.saturating_sub(self.last_received)` with `u64::MAX` (or `now_ns()`) so that since_last_send is treated as maximally large when no packet has ever been sent, allowing the first keepalive to fire correctly.",
+      "description": "Resolve medium finding in `rustguard-kmod/src/timers.rs`: Fix needs_keepalive() fallback when last_sent == 0: replace `now.saturating_sub(self.last_received)` with `u64::MAX` (or `now_ns()`) so that since_last_send is treated as maximally large when no packet has ever been sent, allowing the first keepalive to fire correctly.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 29,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-030",
+      "actId": "ACT-fe7cbd-1",
+      "title": "Fix: Replace hardcoded IP header offset 20 with `let ihl = (reply[0] & 0x0f) as usize * 4;` and use `ihl` in place of 20 for the ICMP-type check , the ICMP checksum slice (`&reply[ihl..n]`), the IP checksum slice (`&reply[..ihl]`), and tighten the length guard to `n >= ihl + 8`.",
+      "description": "Resolve medium finding in `rustguard-tun/examples/tun_echo.rs` (symbol: `reply[ihl] == 8`): Replace hardcoded IP header offset 20 with `let ihl = (reply[0] & 0x0f) as usize * 4;` and use `ihl` in place of 20 for the ICMP-type check , the ICMP checksum slice (`&reply[ihl..n]`), the IP checksum slice (`&reply[..ihl]`), and tighten the length guard to `n >= ihl + 8`.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 30,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-031",
+      "actId": "ACT-0723df-1",
+      "title": "Fix: Replace `self.pending_reads -= 1` with `self.pending_reads = self.pending_reads.saturating_sub(1)` (or add a debug_assert!(self.pending_reads > 0) guard) in both submit_and_wait() and poll() to prevent panic-on-underflow in debug builds and silent counter corruption in release builds.",
+      "description": "Resolve medium finding in `rustguard-tun/src/uring.rs`: Replace `self.pending_reads -= 1` with `self.pending_reads = self.pending_reads.saturating_sub(1)` (or add a debug_assert!(self.pending_reads > 0) guard) in both submit_and_wait() and poll() to prevent panic-on-underflow in debug builds and silent counter corruption in release builds.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 31,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-032",
+      "actId": "ACT-0723df-2",
+      "title": "Fix: Same saturating_sub fix required in poll() at the second occurrence of pending_reads -= 1.",
+      "description": "Resolve medium finding in `rustguard-tun/src/uring.rs`: Same saturating_sub fix required in poll() at the second occurrence of pending_reads -= 1.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 32,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-033",
+      "actId": "ACT-0723df-3",
+      "title": "Fix: Add bounds validation at the top of submit_write(): return an Err if buf_idx >= NUM_BUFS or if !self.bufs.in_flight[buf_idx]. This prevents out-of-bounds pointer arithmetic in slot_ptr() and prevents aliasing a buffer still owned by a pending read SQE.",
+      "description": "Resolve medium finding in `rustguard-tun/src/uring.rs`: Add bounds validation at the top of submit_write(): return an Err if buf_idx >= NUM_BUFS or if !self.bufs.in_flight[buf_idx]. This prevents out-of-bounds pointer arithmetic in slot_ptr() and prevents aliasing a buffer still owned by a pending read SQE.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 33,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-034",
+      "actId": "ACT-92d12d-1",
+      "title": "Fix: Mirror the prefix_len == 0 guard from `new` inside `contains`: `let mask = if self.prefix_len == 0 { 0 } else { u32::MAX << (32 - self.prefix_len) };` to prevent a shift-overflow panic in debug mode and incorrect results in release mode.",
+      "description": "Resolve low finding in `rustguard-enroll/src/pool.rs`: Mirror the prefix_len == 0 guard from `new` inside `contains`: `let mask = if self.prefix_len == 0 { 0 } else { u32::MAX << (32 - self.prefix_len) };` to prevent a shift-overflow panic in debug mode and incorrect results in release mode.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 34,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-035",
+      "actId": "ACT-a01ecd-1",
+      "title": "Fix: Remove the `bit` field from TrieNode or implement proper compressed-trie logic: set node.bit to the actual bit position tested at each node during insertion and read it during lookup instead of using `depth`. As-is, the field is always 0 and the struct's own documentation is false.",
+      "description": "Resolve low finding in `rustguard-kmod/src/allowedips.rs`: Remove the `bit` field from TrieNode or implement proper compressed-trie logic: set node.bit to the actual bit position tested at each node during insertion and read it during lookup instead of using `depth`. As-is, the field is always 0 and the struct's own documentation is false.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 35,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-036",
+      "actId": "ACT-a01ecd-3",
+      "title": "Fix: Add peer_idx < MAX_PEERS validation in insert_v4 and insert_v6. The constant MAX_PEERS is defined in this module and callers index into peer arrays bounded by it; accepting and returning unchecked peer_idx values can produce out-of-bounds accesses at the call site.",
+      "description": "Resolve low finding in `rustguard-kmod/src/allowedips.rs`: Add peer_idx < MAX_PEERS validation in insert_v4 and insert_v6. The constant MAX_PEERS is defined in this module and callers index into peer arrays bounded by it; accepting and returning unchecked peer_idx values can produce out-of-bounds accesses at the call site.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 36,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-037",
+      "actId": "ACT-a01ecd-5",
+      "title": "Fix: Remove the dead assignments on lines 116-117 inside the cidr==0 branch of insert . Both are unconditionally overwritten on lines 119-120. The dead writes suggest an incomplete refactor and can mislead future readers about the intended sentinel value.",
+      "description": "Resolve low finding in `rustguard-kmod/src/allowedips.rs` (symbol: `node.cidr = 0; node.peer_idx = peer_idx;`): Remove the dead assignments on lines 116-117 inside the cidr==0 branch of insert . Both are unconditionally overwritten on lines 119-120. The dead writes suggest an incomplete refactor and can mislead future readers about the intended sentinel value.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 37,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-038",
+      "actId": "ACT-050448-1",
+      "title": "Fix: Change REKEY_AFTER_MESSAGES from `(1u64 << 60) - 1` to `1u64 << 60` to match the canonical WireGuard kernel constant and eliminate the off-by-one.",
+      "description": "Resolve low finding in `rustguard-kmod/src/timers.rs`: Change REKEY_AFTER_MESSAGES from `(1u64 << 60) - 1` to `1u64 << 60` to match the canonical WireGuard kernel constant and eliminate the off-by-one.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 38,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-039",
+      "actId": "ACT-0723df-4",
+      "title": "Fix: Add a bounds check in BufferPool::free() — assert!(idx < NUM_BUFS) or return early — to prevent a silent out-of-bounds panic or (in unsafe contexts) memory corruption when called with an invalid index.",
+      "description": "Resolve low finding in `rustguard-tun/src/uring.rs`: Add a bounds check in BufferPool::free() — assert!(idx < NUM_BUFS) or return early — to prevent a silent out-of-bounds panic or (in unsafe contexts) memory corruption when called with an invalid index.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 39,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-040",
+      "actId": "ACT-0723df-5",
+      "title": "Fix: Consider replacing the &self receiver of slot_ptr with &mut self, or wrapping bufs.data in UnsafeCell<Vec<u8>>, to make the *mut u8 derivation sound under Rust's aliasing rules. At minimum, document the safety invariant: callers must not hold any Rust reference to a slot while that slot's in_flight flag is true.",
+      "description": "Resolve low finding in `rustguard-tun/src/uring.rs`: Consider replacing the &self receiver of slot_ptr with &mut self, or wrapping bufs.data in UnsafeCell<Vec<u8>>, to make the *mut u8 derivation sound under Rust's aliasing rules. At minimum, document the safety invariant: callers must not hold any Rust reference to a slot while that slot's in_flight flag is true.",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 40,
+      "passes": true,
+      "notes": "Source axis: correction"
+    },
+    {
+      "id": "FIX-041",
+      "actId": "ACT-050448-4",
+      "title": "Fix: Remove dead code: `KEEPALIVE_TIMEOUT_NS` is exported but unused",
+      "description": "Resolve high finding in `rustguard-kmod/src/timers.rs` (symbol: `KEEPALIVE_TIMEOUT_NS`): Remove dead code: `KEEPALIVE_TIMEOUT_NS` is exported but unused",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 41,
+      "passes": false,
+      "notes": "Source axis: utility"
+    },
+    {
+      "id": "FIX-042",
+      "actId": "ACT-58e5ff-16",
+      "title": "Fix: Remove dead code: `random_bytes` is exported but unused",
+      "description": "Resolve medium finding in `rustguard-kmod/src/noise.rs` (symbol: `random_bytes`): Remove dead code: `random_bytes` is exported but unused",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 42,
+      "passes": false,
+      "notes": "Source axis: utility"
+    },
+    {
+      "id": "FIX-043",
+      "actId": "ACT-58e5ff-4",
+      "title": "Fix: Deduplicate: `constant_time_eq` duplicates `constant_time_eq` in `rustguard-kmod/src/cookie.rs`",
+      "description": "Resolve high finding in `rustguard-kmod/src/noise.rs` (symbol: `constant_time_eq`): Deduplicate: `constant_time_eq` duplicates `constant_time_eq` in `rustguard-kmod/src/cookie.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 43,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-044",
+      "actId": "ACT-58e5ff-7",
+      "title": "Fix: Deduplicate: `hash` duplicates `hash` in `rustguard-kmod/src/cookie.rs`",
+      "description": "Resolve high finding in `rustguard-kmod/src/noise.rs` (symbol: `hash`): Deduplicate: `hash` duplicates `hash` in `rustguard-kmod/src/cookie.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 44,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-045",
+      "actId": "ACT-58e5ff-9",
+      "title": "Fix: Deduplicate: `mac` duplicates `mac` in `rustguard-kmod/src/cookie.rs`",
+      "description": "Resolve high finding in `rustguard-kmod/src/noise.rs` (symbol: `mac`): Deduplicate: `mac` duplicates `mac` in `rustguard-kmod/src/cookie.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 45,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-046",
+      "actId": "ACT-bd20cf-8",
+      "title": "Fix: Deduplicate: `rand_index` duplicates `rand_index` in `rustguard-enroll/src/server.rs`",
+      "description": "Resolve medium finding in `rustguard-daemon/src/tunnel.rs` (symbol: `rand_index`): Deduplicate: `rand_index` duplicates `rand_index` in `rustguard-enroll/src/server.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 46,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-047",
+      "actId": "ACT-bd20cf-12",
+      "title": "Fix: Deduplicate: `base64_key` duplicates `base64_key` in `rustguard-enroll/src/server.rs`",
+      "description": "Resolve medium finding in `rustguard-daemon/src/tunnel.rs` (symbol: `base64_key`): Deduplicate: `base64_key` duplicates `base64_key` in `rustguard-enroll/src/server.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 47,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-048",
+      "actId": "ACT-ca1d92-8",
+      "title": "Fix: Deduplicate: `rand_index` duplicates `rand_index` in `rustguard-enroll/src/server.rs`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/client.rs` (symbol: `rand_index`): Deduplicate: `rand_index` duplicates `rand_index` in `rustguard-enroll/src/server.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 48,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-049",
+      "actId": "ACT-ca1d92-9",
+      "title": "Fix: Deduplicate: `base64_key` duplicates `base64_key` in `rustguard-enroll/src/server.rs`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/client.rs` (symbol: `base64_key`): Deduplicate: `base64_key` duplicates `base64_key` in `rustguard-enroll/src/server.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 49,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-050",
+      "actId": "ACT-a732f2-6",
+      "title": "Fix: Deduplicate: `rand_index` duplicates `rand_index` in `rustguard-enroll/src/client.rs`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/server.rs` (symbol: `rand_index`): Deduplicate: `rand_index` duplicates `rand_index` in `rustguard-enroll/src/client.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 50,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-051",
+      "actId": "ACT-a732f2-7",
+      "title": "Fix: Deduplicate: `base64_key` duplicates `base64_key` in `rustguard-enroll/src/client.rs`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/server.rs` (symbol: `base64_key`): Deduplicate: `base64_key` duplicates `base64_key` in `rustguard-enroll/src/client.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 51,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-052",
+      "actId": "ACT-9105c7-2",
+      "title": "Fix: Deduplicate: `hash` duplicates `hash` in `rustguard-kmod/src/noise.rs`",
+      "description": "Resolve medium finding in `rustguard-kmod/src/cookie.rs` (symbol: `hash`): Deduplicate: `hash` duplicates `hash` in `rustguard-kmod/src/noise.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 52,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-053",
+      "actId": "ACT-9105c7-3",
+      "title": "Fix: Deduplicate: `mac` duplicates `mac` in `rustguard-kmod/src/noise.rs`",
+      "description": "Resolve medium finding in `rustguard-kmod/src/cookie.rs` (symbol: `mac`): Deduplicate: `mac` duplicates `mac` in `rustguard-kmod/src/noise.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 53,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-054",
+      "actId": "ACT-9105c7-4",
+      "title": "Fix: Deduplicate: `random_bytes` duplicates `random_bytes` in `rustguard-kmod/src/noise.rs`",
+      "description": "Resolve medium finding in `rustguard-kmod/src/cookie.rs` (symbol: `random_bytes`): Deduplicate: `random_bytes` duplicates `random_bytes` in `rustguard-kmod/src/noise.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 54,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-055",
+      "actId": "ACT-9105c7-7",
+      "title": "Fix: Deduplicate: `constant_time_eq` duplicates `constant_time_eq` in `rustguard-kmod/src/noise.rs`",
+      "description": "Resolve medium finding in `rustguard-kmod/src/cookie.rs` (symbol: `constant_time_eq`): Deduplicate: `constant_time_eq` duplicates `constant_time_eq` in `rustguard-kmod/src/noise.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 55,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-056",
+      "actId": "ACT-58e5ff-17",
+      "title": "Fix: Deduplicate: `random_bytes` duplicates `random_bytes` in `rustguard-kmod/src/cookie.rs`",
+      "description": "Resolve medium finding in `rustguard-kmod/src/noise.rs` (symbol: `random_bytes`): Deduplicate: `random_bytes` duplicates `random_bytes` in `rustguard-kmod/src/cookie.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 56,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-057",
+      "actId": "ACT-22946f-3",
+      "title": "Fix: Deduplicate: `TUNSETIFF` duplicates `TUNSETIFF` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `TUNSETIFF`): Deduplicate: `TUNSETIFF` duplicates `TUNSETIFF` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 57,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-058",
+      "actId": "ACT-22946f-4",
+      "title": "Fix: Deduplicate: `SIOCSIFADDR` duplicates `SIOCSIFADDR` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `SIOCSIFADDR`): Deduplicate: `SIOCSIFADDR` duplicates `SIOCSIFADDR` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 58,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-059",
+      "actId": "ACT-22946f-5",
+      "title": "Fix: Deduplicate: `SIOCSIFDSTADDR` duplicates `SIOCSIFDSTADDR` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `SIOCSIFDSTADDR`): Deduplicate: `SIOCSIFDSTADDR` duplicates `SIOCSIFDSTADDR` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 59,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-060",
+      "actId": "ACT-22946f-6",
+      "title": "Fix: Deduplicate: `SIOCSIFNETMASK` duplicates `SIOCSIFNETMASK` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `SIOCSIFNETMASK`): Deduplicate: `SIOCSIFNETMASK` duplicates `SIOCSIFNETMASK` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 60,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-061",
+      "actId": "ACT-22946f-7",
+      "title": "Fix: Deduplicate: `SIOCSIFMTU` duplicates `SIOCSIFMTU` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `SIOCSIFMTU`): Deduplicate: `SIOCSIFMTU` duplicates `SIOCSIFMTU` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 61,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-062",
+      "actId": "ACT-22946f-8",
+      "title": "Fix: Deduplicate: `SIOCSIFFLAGS` duplicates `SIOCSIFFLAGS` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `SIOCSIFFLAGS`): Deduplicate: `SIOCSIFFLAGS` duplicates `SIOCSIFFLAGS` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 62,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-063",
+      "actId": "ACT-22946f-9",
+      "title": "Fix: Deduplicate: `SIOCGIFFLAGS` duplicates `SIOCGIFFLAGS` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `SIOCGIFFLAGS`): Deduplicate: `SIOCGIFFLAGS` duplicates `SIOCGIFFLAGS` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 63,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-064",
+      "actId": "ACT-22946f-10",
+      "title": "Fix: Deduplicate: `IFF_TUN` duplicates `IFF_TUN` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `IFF_TUN`): Deduplicate: `IFF_TUN` duplicates `IFF_TUN` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 64,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-065",
+      "actId": "ACT-22946f-11",
+      "title": "Fix: Deduplicate: `IFF_NO_PI` duplicates `IFF_NO_PI` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `IFF_NO_PI`): Deduplicate: `IFF_NO_PI` duplicates `IFF_NO_PI` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 65,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-066",
+      "actId": "ACT-22946f-12",
+      "title": "Fix: Deduplicate: `IFF_MULTI_QUEUE` duplicates `IFF_MULTI_QUEUE` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `IFF_MULTI_QUEUE`): Deduplicate: `IFF_MULTI_QUEUE` duplicates `IFF_MULTI_QUEUE` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 66,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-067",
+      "actId": "ACT-22946f-13",
+      "title": "Fix: Deduplicate: `IFF_UP` duplicates `IFF_UP` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `IFF_UP`): Deduplicate: `IFF_UP` duplicates `IFF_UP` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 67,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-068",
+      "actId": "ACT-22946f-14",
+      "title": "Fix: Deduplicate: `IFNAMSIZ` duplicates `IFNAMSIZ` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `IFNAMSIZ`): Deduplicate: `IFNAMSIZ` duplicates `IFNAMSIZ` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 68,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-069",
+      "actId": "ACT-22946f-15",
+      "title": "Fix: Deduplicate: `IfreqFlags` duplicates `IfreqFlags` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `IfreqFlags`): Deduplicate: `IfreqFlags` duplicates `IfreqFlags` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 69,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-070",
+      "actId": "ACT-22946f-16",
+      "title": "Fix: Deduplicate: `IfreqAddr` duplicates `IfreqAddr` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `IfreqAddr`): Deduplicate: `IfreqAddr` duplicates `IfreqAddr` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 70,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-071",
+      "actId": "ACT-22946f-17",
+      "title": "Fix: Deduplicate: `IfreqMtu` duplicates `IfreqMtu` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `IfreqMtu`): Deduplicate: `IfreqMtu` duplicates `IfreqMtu` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 71,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-072",
+      "actId": "ACT-22946f-18",
+      "title": "Fix: Deduplicate: `set_name` duplicates `set_name` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `set_name`): Deduplicate: `set_name` duplicates `set_name` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 72,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-073",
+      "actId": "ACT-22946f-19",
+      "title": "Fix: Deduplicate: `make_sockaddr_in` duplicates `make_sockaddr_in` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `make_sockaddr_in`): Deduplicate: `make_sockaddr_in` duplicates `make_sockaddr_in` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 73,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-074",
+      "actId": "ACT-22946f-20",
+      "title": "Fix: Deduplicate: `close_and_error` duplicates `close_and_error` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `close_and_error`): Deduplicate: `close_and_error` duplicates `close_and_error` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 74,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-075",
+      "actId": "ACT-22946f-23",
+      "title": "Fix: Deduplicate: `configure_interface` duplicates `configure_interface` in `rustguard-tun/src/linux.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `configure_interface`): Deduplicate: `configure_interface` duplicates `configure_interface` in `rustguard-tun/src/linux.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 75,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-076",
+      "actId": "ACT-c62ee4-2",
+      "title": "Fix: Deduplicate: `close_and_error` duplicates `close_and_error` in `rustguard-tun/src/linux_mq.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux.rs` (symbol: `close_and_error`): Deduplicate: `close_and_error` duplicates `close_and_error` in `rustguard-tun/src/linux_mq.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 76,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-077",
+      "actId": "ACT-c62ee4-3",
+      "title": "Fix: Deduplicate: `make_sockaddr_in` duplicates `make_sockaddr_in` in `rustguard-tun/src/linux_mq.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux.rs` (symbol: `make_sockaddr_in`): Deduplicate: `make_sockaddr_in` duplicates `make_sockaddr_in` in `rustguard-tun/src/linux_mq.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 77,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-078",
+      "actId": "ACT-c62ee4-4",
+      "title": "Fix: Deduplicate: `set_name` duplicates `set_name` in `rustguard-tun/src/linux_mq.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux.rs` (symbol: `set_name`): Deduplicate: `set_name` duplicates `set_name` in `rustguard-tun/src/linux_mq.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 78,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-079",
+      "actId": "ACT-c62ee4-6",
+      "title": "Fix: Deduplicate: `configure_interface` duplicates `configure_interface` in `rustguard-tun/src/linux_mq.rs`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux.rs` (symbol: `configure_interface`): Deduplicate: `configure_interface` duplicates `configure_interface` in `rustguard-tun/src/linux_mq.rs`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 79,
+      "passes": false,
+      "notes": "Source axis: duplication"
+    },
+    {
+      "id": "FIX-080",
+      "actId": "ACT-a4f709-8",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `COOKIE_LEN`",
+      "description": "Resolve medium finding in `rustguard-core/src/cookie.rs` (symbol: `COOKIE_LEN`): Add JSDoc documentation for exported symbol: `COOKIE_LEN`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 80,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-081",
+      "actId": "ACT-a4f709-10",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `CookieChecker`",
+      "description": "Resolve medium finding in `rustguard-core/src/cookie.rs` (symbol: `CookieChecker`): Add JSDoc documentation for exported symbol: `CookieChecker`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 81,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-082",
+      "actId": "ACT-a4f709-12",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `CookieState`",
+      "description": "Resolve medium finding in `rustguard-core/src/cookie.rs` (symbol: `CookieState`): Add JSDoc documentation for exported symbol: `CookieState`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 82,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-083",
+      "actId": "ACT-f55ce3-3",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `ReplayWindow`",
+      "description": "Resolve medium finding in `rustguard-core/src/replay.rs` (symbol: `ReplayWindow`): Add JSDoc documentation for exported symbol: `ReplayWindow`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 83,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-084",
+      "actId": "ACT-bd20cf-7",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `run`",
+      "description": "Resolve medium finding in `rustguard-daemon/src/tunnel.rs` (symbol: `run`): Add JSDoc documentation for exported symbol: `run`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 84,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-085",
+      "actId": "ACT-a732f2-5",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `run`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/server.rs` (symbol: `run`): Add JSDoc documentation for exported symbol: `run`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 85,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-086",
+      "actId": "ACT-58e5ff-24",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `INITIATION_SIZE`",
+      "description": "Resolve medium finding in `rustguard-kmod/src/noise.rs` (symbol: `INITIATION_SIZE`): Add JSDoc documentation for exported symbol: `INITIATION_SIZE`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 86,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-087",
+      "actId": "ACT-58e5ff-25",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `RESPONSE_SIZE`",
+      "description": "Resolve medium finding in `rustguard-kmod/src/noise.rs` (symbol: `RESPONSE_SIZE`): Add JSDoc documentation for exported symbol: `RESPONSE_SIZE`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 87,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-088",
+      "actId": "ACT-58e5ff-28",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `create_initiation`",
+      "description": "Resolve medium finding in `rustguard-kmod/src/noise.rs` (symbol: `create_initiation`): Add JSDoc documentation for exported symbol: `create_initiation`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 88,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-089",
+      "actId": "ACT-58e5ff-30",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `process_response`",
+      "description": "Resolve medium finding in `rustguard-kmod/src/noise.rs` (symbol: `process_response`): Add JSDoc documentation for exported symbol: `process_response`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 89,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-090",
+      "actId": "ACT-58e5ff-32",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `process_initiation`",
+      "description": "Resolve medium finding in `rustguard-kmod/src/noise.rs` (symbol: `process_initiation`): Add JSDoc documentation for exported symbol: `process_initiation`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 90,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-091",
+      "actId": "ACT-c30836-3",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `ReplayWindow`",
+      "description": "Resolve medium finding in `rustguard-kmod/src/replay.rs` (symbol: `ReplayWindow`): Add JSDoc documentation for exported symbol: `ReplayWindow`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 91,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-092",
+      "actId": "ACT-22946f-22",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `MultiQueueTun`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux_mq.rs` (symbol: `MultiQueueTun`): Add JSDoc documentation for exported symbol: `MultiQueueTun`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 92,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-093",
+      "actId": "ACT-8fc69f-7",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `XdpDesc`",
+      "description": "Resolve medium finding in `rustguard-tun/src/xdp.rs` (symbol: `XdpDesc`): Add JSDoc documentation for exported symbol: `XdpDesc`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 93,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-094",
+      "actId": "ACT-8fc69f-10",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `if_nametoindex`",
+      "description": "Resolve medium finding in `rustguard-tun/src/xdp.rs` (symbol: `if_nametoindex`): Add JSDoc documentation for exported symbol: `if_nametoindex`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 94,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-095",
+      "actId": "ACT-a4f709-6",
+      "title": "Fix: Complete JSDoc documentation for: `COOKIE_SECRET_LIFETIME`",
+      "description": "Resolve low finding in `rustguard-core/src/cookie.rs` (symbol: `COOKIE_SECRET_LIFETIME`): Complete JSDoc documentation for: `COOKIE_SECRET_LIFETIME`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 95,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-096",
+      "actId": "ACT-a4f709-13",
+      "title": "Fix: Complete JSDoc documentation for: `encode_addr`",
+      "description": "Resolve low finding in `rustguard-core/src/cookie.rs` (symbol: `encode_addr`): Complete JSDoc documentation for: `encode_addr`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 96,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-097",
+      "actId": "ACT-5920d4-2",
+      "title": "Fix: Complete JSDoc documentation for: `initial_chain_key`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `initial_chain_key`): Complete JSDoc documentation for: `initial_chain_key`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 97,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-098",
+      "actId": "ACT-5920d4-3",
+      "title": "Fix: Complete JSDoc documentation for: `mix_hash`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `mix_hash`): Complete JSDoc documentation for: `mix_hash`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 98,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-099",
+      "actId": "ACT-5920d4-5",
+      "title": "Fix: Complete JSDoc documentation for: `mix_key`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `mix_key`): Complete JSDoc documentation for: `mix_key`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 99,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-100",
+      "actId": "ACT-5920d4-6",
+      "title": "Fix: Complete JSDoc documentation for: `encrypt_and_hash`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `encrypt_and_hash`): Complete JSDoc documentation for: `encrypt_and_hash`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 100,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-101",
+      "actId": "ACT-5920d4-7",
+      "title": "Fix: Complete JSDoc documentation for: `decrypt_and_hash`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `decrypt_and_hash`): Complete JSDoc documentation for: `decrypt_and_hash`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 101,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-102",
+      "actId": "ACT-5920d4-9",
+      "title": "Fix: Complete JSDoc documentation for: `compute_mac1`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `compute_mac1`): Complete JSDoc documentation for: `compute_mac1`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 102,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-103",
+      "actId": "ACT-5920d4-10",
+      "title": "Fix: Complete JSDoc documentation for: `InitiatorHandshake`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `InitiatorHandshake`): Complete JSDoc documentation for: `InitiatorHandshake`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 103,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-104",
+      "actId": "ACT-5920d4-11",
+      "title": "Fix: Complete JSDoc documentation for: `create_initiation`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `create_initiation`): Complete JSDoc documentation for: `create_initiation`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 104,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-105",
+      "actId": "ACT-5920d4-12",
+      "title": "Fix: Complete JSDoc documentation for: `create_initiation_psk`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `create_initiation_psk`): Complete JSDoc documentation for: `create_initiation_psk`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 105,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-106",
+      "actId": "ACT-5920d4-13",
+      "title": "Fix: Complete JSDoc documentation for: `create_initiation_with`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `create_initiation_with`): Complete JSDoc documentation for: `create_initiation_with`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 106,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-107",
+      "actId": "ACT-5920d4-14",
+      "title": "Fix: Complete JSDoc documentation for: `process_response`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `process_response`): Complete JSDoc documentation for: `process_response`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 107,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-108",
+      "actId": "ACT-5920d4-15",
+      "title": "Fix: Complete JSDoc documentation for: `process_initiation`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `process_initiation`): Complete JSDoc documentation for: `process_initiation`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 108,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-109",
+      "actId": "ACT-5920d4-16",
+      "title": "Fix: Complete JSDoc documentation for: `process_initiation_psk`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `process_initiation_psk`): Complete JSDoc documentation for: `process_initiation_psk`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 109,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-110",
+      "actId": "ACT-5920d4-17",
+      "title": "Fix: Complete JSDoc documentation for: `process_initiation_with`",
+      "description": "Resolve low finding in `rustguard-core/src/handshake.rs` (symbol: `process_initiation_with`): Complete JSDoc documentation for: `process_initiation_with`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 110,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-111",
+      "actId": "ACT-bd20cf-4",
+      "title": "Fix: Complete JSDoc documentation for: `TunnelState`",
+      "description": "Resolve low finding in `rustguard-daemon/src/tunnel.rs` (symbol: `TunnelState`): Complete JSDoc documentation for: `TunnelState`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 111,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-112",
+      "actId": "ACT-bd20cf-5",
+      "title": "Fix: Complete JSDoc documentation for: `RouteEntry`",
+      "description": "Resolve low finding in `rustguard-daemon/src/tunnel.rs` (symbol: `RouteEntry`): Complete JSDoc documentation for: `RouteEntry`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 112,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-113",
+      "actId": "ACT-bd20cf-9",
+      "title": "Fix: Complete JSDoc documentation for: `rand_index`",
+      "description": "Resolve low finding in `rustguard-daemon/src/tunnel.rs` (symbol: `rand_index`): Complete JSDoc documentation for: `rand_index`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 113,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-114",
+      "actId": "ACT-bd20cf-10",
+      "title": "Fix: Complete JSDoc documentation for: `fill_random`",
+      "description": "Resolve low finding in `rustguard-daemon/src/tunnel.rs` (symbol: `fill_random`): Complete JSDoc documentation for: `fill_random`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 114,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-115",
+      "actId": "ACT-bd20cf-11",
+      "title": "Fix: Complete JSDoc documentation for: `ctrlc_handler`",
+      "description": "Resolve low finding in `rustguard-daemon/src/tunnel.rs` (symbol: `ctrlc_handler`): Complete JSDoc documentation for: `ctrlc_handler`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 115,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-116",
+      "actId": "ACT-a732f2-4",
+      "title": "Fix: Complete JSDoc documentation for: `ServeConfig`",
+      "description": "Resolve low finding in `rustguard-enroll/src/server.rs` (symbol: `ServeConfig`): Complete JSDoc documentation for: `ServeConfig`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 116,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-117",
+      "actId": "ACT-a732f2-8",
+      "title": "Fix: Complete JSDoc documentation for: `setup_xdp`",
+      "description": "Resolve low finding in `rustguard-enroll/src/server.rs` (symbol: `setup_xdp`): Complete JSDoc documentation for: `setup_xdp`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 117,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-118",
+      "actId": "ACT-bb41a6-7",
+      "title": "Fix: Complete JSDoc documentation for: `AEAD_TAG_SIZE`",
+      "description": "Resolve low finding in `rustguard-kmod/src/lib.rs` (symbol: `AEAD_TAG_SIZE`): Complete JSDoc documentation for: `AEAD_TAG_SIZE`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 118,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-119",
+      "actId": "ACT-bb41a6-8",
+      "title": "Fix: Complete JSDoc documentation for: `rustguard_xmit`",
+      "description": "Resolve low finding in `rustguard-kmod/src/lib.rs` (symbol: `rustguard_xmit`): Complete JSDoc documentation for: `rustguard_xmit`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 119,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-120",
+      "actId": "ACT-bb41a6-9",
+      "title": "Fix: Complete JSDoc documentation for: `rustguard_rx`",
+      "description": "Resolve low finding in `rustguard-kmod/src/lib.rs` (symbol: `rustguard_rx`): Complete JSDoc documentation for: `rustguard_rx`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 120,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-121",
+      "actId": "ACT-bb41a6-10",
+      "title": "Fix: Complete JSDoc documentation for: `handle_initiation`",
+      "description": "Resolve low finding in `rustguard-kmod/src/lib.rs` (symbol: `handle_initiation`): Complete JSDoc documentation for: `handle_initiation`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 121,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-122",
+      "actId": "ACT-bb41a6-11",
+      "title": "Fix: Complete JSDoc documentation for: `handle_response`",
+      "description": "Resolve low finding in `rustguard-kmod/src/lib.rs` (symbol: `handle_response`): Complete JSDoc documentation for: `handle_response`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 122,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-123",
+      "actId": "ACT-bb41a6-12",
+      "title": "Fix: Complete JSDoc documentation for: `handle_transport`",
+      "description": "Resolve low finding in `rustguard-kmod/src/lib.rs` (symbol: `handle_transport`): Complete JSDoc documentation for: `handle_transport`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 123,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-124",
+      "actId": "ACT-bb41a6-14",
+      "title": "Fix: Complete JSDoc documentation for: `rustguard_dev_uninit`",
+      "description": "Resolve low finding in `rustguard-kmod/src/lib.rs` (symbol: `rustguard_dev_uninit`): Complete JSDoc documentation for: `rustguard_dev_uninit`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 124,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-125",
+      "actId": "ACT-bb41a6-16",
+      "title": "Fix: Complete JSDoc documentation for: `rustguard_genl_get`",
+      "description": "Resolve low finding in `rustguard-kmod/src/lib.rs` (symbol: `rustguard_genl_get`): Complete JSDoc documentation for: `rustguard_genl_get`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 125,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-126",
+      "actId": "ACT-bb41a6-18",
+      "title": "Fix: Complete JSDoc documentation for: `rustguard_genl_set`",
+      "description": "Resolve low finding in `rustguard-kmod/src/lib.rs` (symbol: `rustguard_genl_set`): Complete JSDoc documentation for: `rustguard_genl_set`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 126,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-127",
+      "actId": "ACT-58e5ff-3",
+      "title": "Fix: Complete JSDoc documentation for: `zeroize`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `zeroize`): Complete JSDoc documentation for: `zeroize`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 127,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-128",
+      "actId": "ACT-58e5ff-5",
+      "title": "Fix: Complete JSDoc documentation for: `constant_time_eq`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `constant_time_eq`): Complete JSDoc documentation for: `constant_time_eq`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 128,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-129",
+      "actId": "ACT-58e5ff-6",
+      "title": "Fix: Complete JSDoc documentation for: `TAI64_EPOCH_OFFSET`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `TAI64_EPOCH_OFFSET`): Complete JSDoc documentation for: `TAI64_EPOCH_OFFSET`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 129,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-130",
+      "actId": "ACT-58e5ff-8",
+      "title": "Fix: Complete JSDoc documentation for: `hash`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `hash`): Complete JSDoc documentation for: `hash`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 130,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-131",
+      "actId": "ACT-58e5ff-10",
+      "title": "Fix: Complete JSDoc documentation for: `mac`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `mac`): Complete JSDoc documentation for: `mac`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 131,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-132",
+      "actId": "ACT-58e5ff-11",
+      "title": "Fix: Complete JSDoc documentation for: `hkdf`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `hkdf`): Complete JSDoc documentation for: `hkdf`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 132,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-133",
+      "actId": "ACT-58e5ff-12",
+      "title": "Fix: Complete JSDoc documentation for: `seal`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `seal`): Complete JSDoc documentation for: `seal`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 133,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-134",
+      "actId": "ACT-58e5ff-13",
+      "title": "Fix: Complete JSDoc documentation for: `open`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `open`): Complete JSDoc documentation for: `open`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 134,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-135",
+      "actId": "ACT-58e5ff-14",
+      "title": "Fix: Complete JSDoc documentation for: `dh`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `dh`): Complete JSDoc documentation for: `dh`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 135,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-136",
+      "actId": "ACT-58e5ff-15",
+      "title": "Fix: Complete JSDoc documentation for: `generate_keypair`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `generate_keypair`): Complete JSDoc documentation for: `generate_keypair`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 136,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-137",
+      "actId": "ACT-58e5ff-18",
+      "title": "Fix: Complete JSDoc documentation for: `encrypt_and_hash`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `encrypt_and_hash`): Complete JSDoc documentation for: `encrypt_and_hash`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 137,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-138",
+      "actId": "ACT-58e5ff-19",
+      "title": "Fix: Complete JSDoc documentation for: `decrypt_and_hash`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `decrypt_and_hash`): Complete JSDoc documentation for: `decrypt_and_hash`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 138,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-139",
+      "actId": "ACT-58e5ff-20",
+      "title": "Fix: Complete JSDoc documentation for: `compute_mac1`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `compute_mac1`): Complete JSDoc documentation for: `compute_mac1`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 139,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-140",
+      "actId": "ACT-58e5ff-21",
+      "title": "Fix: Complete JSDoc documentation for: `tai64n_now`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `tai64n_now`): Complete JSDoc documentation for: `tai64n_now`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 140,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-141",
+      "actId": "ACT-58e5ff-26",
+      "title": "Fix: Complete JSDoc documentation for: `InitiatorState`",
+      "description": "Resolve low finding in `rustguard-kmod/src/noise.rs` (symbol: `InitiatorState`): Complete JSDoc documentation for: `InitiatorState`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 141,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-142",
+      "actId": "ACT-8fc69f-8",
+      "title": "Fix: Complete JSDoc documentation for: `XdpConfig`",
+      "description": "Resolve low finding in `rustguard-tun/src/xdp.rs` (symbol: `XdpConfig`): Complete JSDoc documentation for: `XdpConfig`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 142,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-143",
+      "actId": "ACT-8fc69f-9",
+      "title": "Fix: Complete JSDoc documentation for: `XdpSocket`",
+      "description": "Resolve low finding in `rustguard-tun/src/xdp.rs` (symbol: `XdpSocket`): Complete JSDoc documentation for: `XdpSocket`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 143,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-144",
+      "actId": "ACT-3c9a32-1",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `MSG_INITIATION`",
+      "description": "Resolve medium finding in `rustguard-core/src/messages.rs` (symbol: `MSG_INITIATION`): Add JSDoc documentation for exported symbol: `MSG_INITIATION`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 144,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-145",
+      "actId": "ACT-3c9a32-2",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `MSG_RESPONSE`",
+      "description": "Resolve medium finding in `rustguard-core/src/messages.rs` (symbol: `MSG_RESPONSE`): Add JSDoc documentation for exported symbol: `MSG_RESPONSE`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 145,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-146",
+      "actId": "ACT-3c9a32-3",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `MSG_COOKIE_REPLY`",
+      "description": "Resolve medium finding in `rustguard-core/src/messages.rs` (symbol: `MSG_COOKIE_REPLY`): Add JSDoc documentation for exported symbol: `MSG_COOKIE_REPLY`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 146,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-147",
+      "actId": "ACT-3c9a32-4",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `MSG_TRANSPORT`",
+      "description": "Resolve medium finding in `rustguard-core/src/messages.rs` (symbol: `MSG_TRANSPORT`): Add JSDoc documentation for exported symbol: `MSG_TRANSPORT`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 147,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-148",
+      "actId": "ACT-3c9a32-6",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `INITIATION_SIZE`",
+      "description": "Resolve medium finding in `rustguard-core/src/messages.rs` (symbol: `INITIATION_SIZE`): Add JSDoc documentation for exported symbol: `INITIATION_SIZE`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 148,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-149",
+      "actId": "ACT-3c9a32-8",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `RESPONSE_SIZE`",
+      "description": "Resolve medium finding in `rustguard-core/src/messages.rs` (symbol: `RESPONSE_SIZE`): Add JSDoc documentation for exported symbol: `RESPONSE_SIZE`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 149,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-150",
+      "actId": "ACT-3c9a32-11",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `COOKIE_REPLY_SIZE`",
+      "description": "Resolve medium finding in `rustguard-core/src/messages.rs` (symbol: `COOKIE_REPLY_SIZE`): Add JSDoc documentation for exported symbol: `COOKIE_REPLY_SIZE`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 150,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-151",
+      "actId": "ACT-3c9a32-12",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `TRANSPORT_HEADER_SIZE`",
+      "description": "Resolve medium finding in `rustguard-core/src/messages.rs` (symbol: `TRANSPORT_HEADER_SIZE`): Add JSDoc documentation for exported symbol: `TRANSPORT_HEADER_SIZE`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 151,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-152",
+      "actId": "ACT-efa3ec-4",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `AEAD_TAG_LEN`",
+      "description": "Resolve medium finding in `rustguard-crypto/src/aead.rs` (symbol: `AEAD_TAG_LEN`): Add JSDoc documentation for exported symbol: `AEAD_TAG_LEN`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 152,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-153",
+      "actId": "ACT-dbf131-3",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `InterfaceConfig`",
+      "description": "Resolve medium finding in `rustguard-daemon/src/config.rs` (symbol: `InterfaceConfig`): Add JSDoc documentation for exported symbol: `InterfaceConfig`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 153,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-154",
+      "actId": "ACT-dbf131-4",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `PeerConfig`",
+      "description": "Resolve medium finding in `rustguard-daemon/src/config.rs` (symbol: `PeerConfig`): Add JSDoc documentation for exported symbol: `PeerConfig`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 154,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-155",
+      "actId": "ACT-dbf131-6",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `prefix_to_netmask`",
+      "description": "Resolve medium finding in `rustguard-daemon/src/config.rs` (symbol: `prefix_to_netmask`): Add JSDoc documentation for exported symbol: `prefix_to_netmask`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 155,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-156",
+      "actId": "ACT-18d76d-3",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `new_window`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/control.rs` (symbol: `new_window`): Add JSDoc documentation for exported symbol: `new_window`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 156,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-157",
+      "actId": "ACT-18d76d-5",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `is_open`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/control.rs` (symbol: `is_open`): Add JSDoc documentation for exported symbol: `is_open`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 157,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-158",
+      "actId": "ACT-c2ad01-2",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `BATCH_SIZE`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/fast_udp.rs` (symbol: `BATCH_SIZE`): Add JSDoc documentation for exported symbol: `BATCH_SIZE`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 158,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-159",
+      "actId": "ACT-c2ad01-4",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `PKT_BUF_SIZE`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/fast_udp.rs` (symbol: `PKT_BUF_SIZE`): Add JSDoc documentation for exported symbol: `PKT_BUF_SIZE`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 159,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-160",
+      "actId": "ACT-c2ad01-6",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `RecvBatch`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/fast_udp.rs` (symbol: `RecvBatch`): Add JSDoc documentation for exported symbol: `RecvBatch`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 160,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-161",
+      "actId": "ACT-c2ad01-8",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `recv_batch`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/fast_udp.rs` (symbol: `recv_batch`): Add JSDoc documentation for exported symbol: `recv_batch`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 161,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-162",
+      "actId": "ACT-c2ad01-10",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `send_packet`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/fast_udp.rs` (symbol: `send_packet`): Add JSDoc documentation for exported symbol: `send_packet`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 162,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-163",
+      "actId": "ACT-c2ad01-12",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `recv_batch`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/fast_udp.rs` (symbol: `recv_batch`): Add JSDoc documentation for exported symbol: `recv_batch`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 163,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-164",
+      "actId": "ACT-c2ad01-14",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `send_packet`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/fast_udp.rs` (symbol: `send_packet`): Add JSDoc documentation for exported symbol: `send_packet`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 164,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-165",
+      "actId": "ACT-d84ed3-1",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `ENROLL_REQUEST_SIZE`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/protocol.rs` (symbol: `ENROLL_REQUEST_SIZE`): Add JSDoc documentation for exported symbol: `ENROLL_REQUEST_SIZE`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 165,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-166",
+      "actId": "ACT-d84ed3-2",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `ENROLL_RESPONSE_SIZE`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/protocol.rs` (symbol: `ENROLL_RESPONSE_SIZE`): Add JSDoc documentation for exported symbol: `ENROLL_RESPONSE_SIZE`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 166,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-167",
+      "actId": "ACT-62f2c7-5",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `XdpProgram`",
+      "description": "Resolve medium finding in `rustguard-tun/src/bpf_loader.rs` (symbol: `XdpProgram`): Add JSDoc documentation for exported symbol: `XdpProgram`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 167,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-168",
+      "actId": "ACT-c62ee4-5",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `create`",
+      "description": "Resolve medium finding in `rustguard-tun/src/linux.rs` (symbol: `create`): Add JSDoc documentation for exported symbol: `create`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 168,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-169",
+      "actId": "ACT-b59607-8",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `create`",
+      "description": "Resolve medium finding in `rustguard-tun/src/macos.rs` (symbol: `create`): Add JSDoc documentation for exported symbol: `create`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 169,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-170",
+      "actId": "ACT-b59607-10",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `read`",
+      "description": "Resolve medium finding in `rustguard-tun/src/macos.rs` (symbol: `read`): Add JSDoc documentation for exported symbol: `read`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 170,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-171",
+      "actId": "ACT-b59607-12",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `write`",
+      "description": "Resolve medium finding in `rustguard-tun/src/macos.rs` (symbol: `write`): Add JSDoc documentation for exported symbol: `write`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 171,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-172",
+      "actId": "ACT-3c9a32-5",
+      "title": "Fix: Complete JSDoc documentation for: `Initiation`",
+      "description": "Resolve low finding in `rustguard-core/src/messages.rs` (symbol: `Initiation`): Complete JSDoc documentation for: `Initiation`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 172,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-173",
+      "actId": "ACT-3c9a32-7",
+      "title": "Fix: Complete JSDoc documentation for: `Response`",
+      "description": "Resolve low finding in `rustguard-core/src/messages.rs` (symbol: `Response`): Complete JSDoc documentation for: `Response`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 173,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-174",
+      "actId": "ACT-3c9a32-9",
+      "title": "Fix: Complete JSDoc documentation for: `Transport`",
+      "description": "Resolve low finding in `rustguard-core/src/messages.rs` (symbol: `Transport`): Complete JSDoc documentation for: `Transport`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 174,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-175",
+      "actId": "ACT-3c9a32-10",
+      "title": "Fix: Complete JSDoc documentation for: `CookieReply`",
+      "description": "Resolve low finding in `rustguard-core/src/messages.rs` (symbol: `CookieReply`): Complete JSDoc documentation for: `CookieReply`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 175,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-176",
+      "actId": "ACT-fb2f2d-6",
+      "title": "Fix: Complete JSDoc documentation for: `REKEY_TIMEOUT`",
+      "description": "Resolve low finding in `rustguard-core/src/timers.rs` (symbol: `REKEY_TIMEOUT`): Complete JSDoc documentation for: `REKEY_TIMEOUT`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 176,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-177",
+      "actId": "ACT-dbf131-2",
+      "title": "Fix: Complete JSDoc documentation for: `Config`",
+      "description": "Resolve low finding in `rustguard-daemon/src/config.rs` (symbol: `Config`): Complete JSDoc documentation for: `Config`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 177,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-178",
+      "actId": "ACT-dbf131-5",
+      "title": "Fix: Complete JSDoc documentation for: `CidrAddr`",
+      "description": "Resolve low finding in `rustguard-daemon/src/config.rs` (symbol: `CidrAddr`): Complete JSDoc documentation for: `CidrAddr`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 178,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-179",
+      "actId": "ACT-18d76d-2",
+      "title": "Fix: Complete JSDoc documentation for: `socket_path`",
+      "description": "Resolve low finding in `rustguard-enroll/src/control.rs` (symbol: `socket_path`): Complete JSDoc documentation for: `socket_path`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 179,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-180",
+      "actId": "ACT-18d76d-6",
+      "title": "Fix: Complete JSDoc documentation for: `open_window`",
+      "description": "Resolve low finding in `rustguard-enroll/src/control.rs` (symbol: `open_window`): Complete JSDoc documentation for: `open_window`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 180,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-181",
+      "actId": "ACT-18d76d-7",
+      "title": "Fix: Complete JSDoc documentation for: `close_window`",
+      "description": "Resolve low finding in `rustguard-enroll/src/control.rs` (symbol: `close_window`): Complete JSDoc documentation for: `close_window`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 181,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-182",
+      "actId": "ACT-18d76d-8",
+      "title": "Fix: Complete JSDoc documentation for: `remaining`",
+      "description": "Resolve low finding in `rustguard-enroll/src/control.rs` (symbol: `remaining`): Complete JSDoc documentation for: `remaining`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 182,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-183",
+      "actId": "ACT-18d76d-9",
+      "title": "Fix: Complete JSDoc documentation for: `start_listener`",
+      "description": "Resolve low finding in `rustguard-enroll/src/control.rs` (symbol: `start_listener`): Complete JSDoc documentation for: `start_listener`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 183,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-184",
+      "actId": "ACT-18d76d-10",
+      "title": "Fix: Complete JSDoc documentation for: `send_command`",
+      "description": "Resolve low finding in `rustguard-enroll/src/control.rs` (symbol: `send_command`): Complete JSDoc documentation for: `send_command`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 184,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-185",
+      "actId": "ACT-18d76d-11",
+      "title": "Fix: Complete JSDoc documentation for: `cleanup`",
+      "description": "Resolve low finding in `rustguard-enroll/src/control.rs` (symbol: `cleanup`): Complete JSDoc documentation for: `cleanup`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 185,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-186",
+      "actId": "ACT-d84ed3-3",
+      "title": "Fix: Complete JSDoc documentation for: `derive_token_key`",
+      "description": "Resolve low finding in `rustguard-enroll/src/protocol.rs` (symbol: `derive_token_key`): Complete JSDoc documentation for: `derive_token_key`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 186,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-187",
+      "actId": "ACT-d84ed3-4",
+      "title": "Fix: Complete JSDoc documentation for: `build_request`",
+      "description": "Resolve low finding in `rustguard-enroll/src/protocol.rs` (symbol: `build_request`): Complete JSDoc documentation for: `build_request`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 187,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-188",
+      "actId": "ACT-d84ed3-5",
+      "title": "Fix: Complete JSDoc documentation for: `parse_request`",
+      "description": "Resolve low finding in `rustguard-enroll/src/protocol.rs` (symbol: `parse_request`): Complete JSDoc documentation for: `parse_request`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 188,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-189",
+      "actId": "ACT-d84ed3-6",
+      "title": "Fix: Complete JSDoc documentation for: `EnrollmentOffer`",
+      "description": "Resolve low finding in `rustguard-enroll/src/protocol.rs` (symbol: `EnrollmentOffer`): Complete JSDoc documentation for: `EnrollmentOffer`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 189,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-190",
+      "actId": "ACT-d84ed3-7",
+      "title": "Fix: Complete JSDoc documentation for: `build_response`",
+      "description": "Resolve low finding in `rustguard-enroll/src/protocol.rs` (symbol: `build_response`): Complete JSDoc documentation for: `build_response`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 190,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-191",
+      "actId": "ACT-d84ed3-8",
+      "title": "Fix: Complete JSDoc documentation for: `parse_response`",
+      "description": "Resolve low finding in `rustguard-enroll/src/protocol.rs` (symbol: `parse_response`): Complete JSDoc documentation for: `parse_response`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 191,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-192",
+      "actId": "ACT-c62ee4-7",
+      "title": "Fix: Complete JSDoc documentation for: `read`",
+      "description": "Resolve low finding in `rustguard-tun/src/linux.rs` (symbol: `read`): Complete JSDoc documentation for: `read`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 192,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-193",
+      "actId": "ACT-c62ee4-8",
+      "title": "Fix: Complete JSDoc documentation for: `write`",
+      "description": "Resolve low finding in `rustguard-tun/src/linux.rs` (symbol: `write`): Complete JSDoc documentation for: `write`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 193,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-194",
+      "actId": "ACT-b59607-6",
+      "title": "Fix: Complete JSDoc documentation for: `close_and_error`",
+      "description": "Resolve low finding in `rustguard-tun/src/macos.rs` (symbol: `close_and_error`): Complete JSDoc documentation for: `close_and_error`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 194,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-195",
+      "actId": "ACT-bc7d6e-2",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `hash`",
+      "description": "Resolve medium finding in `rustguard-crypto/src/blake2s.rs` (symbol: `hash`): Add JSDoc documentation for exported symbol: `hash`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 195,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-196",
+      "actId": "ACT-bc7d6e-4",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `mac`",
+      "description": "Resolve medium finding in `rustguard-crypto/src/blake2s.rs` (symbol: `mac`): Add JSDoc documentation for exported symbol: `mac`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 196,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-197",
+      "actId": "ACT-bc7d6e-6",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `hkdf`",
+      "description": "Resolve medium finding in `rustguard-crypto/src/blake2s.rs` (symbol: `hkdf`): Add JSDoc documentation for exported symbol: `hkdf`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 197,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-198",
+      "actId": "ACT-ca1d92-5",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `JoinConfig`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/client.rs` (symbol: `JoinConfig`): Add JSDoc documentation for exported symbol: `JoinConfig`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 198,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-199",
+      "actId": "ACT-ca1d92-7",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `run`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/client.rs` (symbol: `run`): Add JSDoc documentation for exported symbol: `run`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 199,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-200",
+      "actId": "ACT-4cf3f3-3",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `ParsedUdp`",
+      "description": "Resolve medium finding in `rustguard-enroll/src/packet.rs` (symbol: `ParsedUdp`): Add JSDoc documentation for exported symbol: `ParsedUdp`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 200,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-201",
+      "actId": "ACT-bc7d6e-7",
+      "title": "Fix: Complete JSDoc documentation for: `hmac_blake2s`",
+      "description": "Resolve low finding in `rustguard-crypto/src/blake2s.rs` (symbol: `hmac_blake2s`): Complete JSDoc documentation for: `hmac_blake2s`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 201,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-202",
+      "actId": "ACT-7726d0-3",
+      "title": "Fix: Complete JSDoc documentation for: `StaticSecret`",
+      "description": "Resolve low finding in `rustguard-crypto/src/x25519.rs` (symbol: `StaticSecret`): Complete JSDoc documentation for: `StaticSecret`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 202,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-203",
+      "actId": "ACT-7726d0-4",
+      "title": "Fix: Complete JSDoc documentation for: `EphemeralSecret`",
+      "description": "Resolve low finding in `rustguard-crypto/src/x25519.rs` (symbol: `EphemeralSecret`): Complete JSDoc documentation for: `EphemeralSecret`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 203,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-204",
+      "actId": "ACT-7726d0-5",
+      "title": "Fix: Complete JSDoc documentation for: `PublicKey`",
+      "description": "Resolve low finding in `rustguard-crypto/src/x25519.rs` (symbol: `PublicKey`): Complete JSDoc documentation for: `PublicKey`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 204,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-205",
+      "actId": "ACT-7726d0-6",
+      "title": "Fix: Complete JSDoc documentation for: `SharedSecret`",
+      "description": "Resolve low finding in `rustguard-crypto/src/x25519.rs` (symbol: `SharedSecret`): Complete JSDoc documentation for: `SharedSecret`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 205,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-206",
+      "actId": "ACT-a01ecd-6",
+      "title": "Fix: Complete JSDoc documentation for: `AllowedIps`",
+      "description": "Resolve low finding in `rustguard-kmod/src/allowedips.rs` (symbol: `AllowedIps`): Complete JSDoc documentation for: `AllowedIps`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 206,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-207",
+      "actId": "ACT-9105c7-5",
+      "title": "Fix: Complete JSDoc documentation for: `CookieChecker`",
+      "description": "Resolve low finding in `rustguard-kmod/src/cookie.rs` (symbol: `CookieChecker`): Complete JSDoc documentation for: `CookieChecker`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 207,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-208",
+      "actId": "ACT-9105c7-6",
+      "title": "Fix: Complete JSDoc documentation for: `CookieState`",
+      "description": "Resolve low finding in `rustguard-kmod/src/cookie.rs` (symbol: `CookieState`): Complete JSDoc documentation for: `CookieState`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 208,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-209",
+      "actId": "ACT-9105c7-8",
+      "title": "Fix: Complete JSDoc documentation for: `constant_time_eq`",
+      "description": "Resolve low finding in `rustguard-kmod/src/cookie.rs` (symbol: `constant_time_eq`): Complete JSDoc documentation for: `constant_time_eq`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 209,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-210",
+      "actId": "ACT-fe7cbd-2",
+      "title": "Fix: Complete JSDoc documentation for: `main`",
+      "description": "Resolve low finding in `rustguard-tun/examples/tun_echo.rs` (symbol: `main`): Complete JSDoc documentation for: `main`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 210,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-211",
+      "actId": "ACT-0723df-6",
+      "title": "Fix: Complete JSDoc documentation for: `BufferPool`",
+      "description": "Resolve low finding in `rustguard-tun/src/uring.rs` (symbol: `BufferPool`): Complete JSDoc documentation for: `BufferPool`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 211,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-212",
+      "actId": "ACT-0723df-7",
+      "title": "Fix: Complete JSDoc documentation for: `UringTun`",
+      "description": "Resolve low finding in `rustguard-tun/src/uring.rs` (symbol: `UringTun`): Complete JSDoc documentation for: `UringTun`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 212,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-213",
+      "actId": "ACT-eacdc0-2",
+      "title": "Fix: Add JSDoc documentation for exported symbol: `Peer`",
+      "description": "Resolve medium finding in `rustguard-daemon/src/peer.rs` (symbol: `Peer`): Add JSDoc documentation for exported symbol: `Peer`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 213,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    },
+    {
+      "id": "FIX-214",
+      "actId": "ACT-92d12d-2",
+      "title": "Fix: Complete JSDoc documentation for: `IpPool`",
+      "description": "Resolve low finding in `rustguard-enroll/src/pool.rs` (symbol: `IpPool`): Complete JSDoc documentation for: `IpPool`",
+      "acceptanceCriteria": [
+        "The issue described in the finding is resolved",
+        "`npm run build` succeeds",
+        "`npm test` passes"
+      ],
+      "priority": 214,
+      "passes": false,
+      "notes": "Source axis: documentation"
+    }
+  ]
+}

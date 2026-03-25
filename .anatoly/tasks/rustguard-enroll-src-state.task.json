@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "file": "rustguard-enroll/src/state.rs",
+  "hash": "62184518bda7468b73dfcfa4449e1133578c394c90dcda041a96a17c87294e4d",
+  "symbols": [
+    {
+      "name": "PersistedPeer",
+      "kind": "class",
+      "exported": true,
+      "line_start": 13,
+      "line_end": 16
+    },
+    {
+      "name": "default_state_path",
+      "kind": "function",
+      "exported": true,
+      "line_start": 19,
+      "line_end": 21
+    },
+    {
+      "name": "save",
+      "kind": "function",
+      "exported": true,
+      "line_start": 25,
+      "line_end": 45
+    },
+    {
+      "name": "load",
+      "kind": "function",
+      "exported": true,
+      "line_start": 48,
+      "line_end": 84
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

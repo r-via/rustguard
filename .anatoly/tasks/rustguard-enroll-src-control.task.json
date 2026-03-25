@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "file": "rustguard-enroll/src/control.rs",
+  "hash": "d565f845410d71691f7913392154805cdb33b0d8885a0280a377237bf0cc637d",
+  "symbols": [
+    {
+      "name": "socket_path",
+      "kind": "function",
+      "exported": true,
+      "line_start": 18,
+      "line_end": 20
+    },
+    {
+      "name": "new_window",
+      "kind": "function",
+      "exported": true,
+      "line_start": 26,
+      "line_end": 28
+    },
+    {
+      "name": "is_open",
+      "kind": "function",
+      "exported": true,
+      "line_start": 31,
+      "line_end": 41
+    },
+    {
+      "name": "open_window",
+      "kind": "function",
+      "exported": true,
+      "line_start": 44,
+      "line_end": 51
+    },
+    {
+      "name": "close_window",
+      "kind": "function",
+      "exported": true,
+      "line_start": 54,
+      "line_end": 56
+    },
+    {
+      "name": "remaining",
+      "kind": "function",
+      "exported": true,
+      "line_start": 59,
+      "line_end": 73
+    },
+    {
+      "name": "start_listener",
+      "kind": "function",
+      "exported": true,
+      "line_start": 77,
+      "line_end": 104
+    },
+    {
+      "name": "handle_client",
+      "kind": "function",
+      "exported": false,
+      "line_start": 106,
+      "line_end": 144
+    },
+    {
+      "name": "send_command",
+      "kind": "function",
+      "exported": true,
+      "line_start": 147,
+      "line_end": 166
+    },
+    {
+      "name": "cleanup",
+      "kind": "function",
+      "exported": true,
+      "line_start": 169,
+      "line_end": 171
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

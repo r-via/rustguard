@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "file": "rustguard-daemon/src/lib.rs",
+  "is_generated": true,
+  "skip_reason": "trivial",
+  "language": "rust",
+  "parse_method": "ast",
+  "verdict": "CLEAN",
+  "symbols": [],
+  "actions": [],
+  "file_level": {
+    "unused_imports": [],
+    "circular_dependencies": [],
+    "general_notes": ""
+  }
+}

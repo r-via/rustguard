@@ -1,0 +1,244 @@
+{
+  "version": 2,
+  "file": "rustguard-core/src/replay.rs",
+  "is_generated": false,
+  "language": "rust",
+  "parse_method": "ast",
+  "verdict": "CRITICAL",
+  "symbols": [
+    {
+      "name": "WINDOW_SIZE",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 10,
+      "line_end": 10,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "GOOD",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 60,
+      "detail": "[USED] Non-exported constant directly referenced in check() method (L44), update() method (L78), shift_window() method (L81), and multiple test cases (L162, L183) | [UNIQUE] Constant definition with no RAG similarity data available indicating no duplicates exist | [OK] 2048 matches the WireGuard kernel implementation and RFC 6479 sliding-window size. The constant is used consistently throughout the file. | [LEAN] Named constant directly from the WireGuard spec (2048-bit bitmap). Replaces a magic number with a meaningful label and is reused in BITMAP_LEN, check(), update(), and shift_window(). Exactly the right level of abstraction. | [GOOD] Constant with no runtime behavior. It is directly referenced as a boundary value in multiple inline tests (too_old_rejected, window_boundary_exact, stress_reverse_within_window), validating that the value drives the correct window semantics. | [UNDOCUMENTED] Private constant with no /// doc comment. The name is reasonably self-explanatory and the module-level //! comment references the 2048-bit window, but no dedicated /// annotation exists. Private items are tolerated as undocumented per evaluation rules. (deliberated: confirmed — Documentation UNDOCUMENTED is technically correct — no /// doc comment exists. However, the detail itself notes this is tolerated for private items per evaluation rules. The name is self-explanatory and the module-level //! comment provides context. Low-confidence finding with minimal impact.)"
+    },
+    {
+      "name": "BITMAP_LEN",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 11,
+      "line_end": 11,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "GOOD",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 60,
+      "detail": "[USED] Non-exported constant used in struct field type annotation (L18), initialization (L25), comparisons (L37, L58), window reset (L79), and array operations (L83) | [UNIQUE] Constant definition derived from WINDOW_SIZE with no RAG similarity data available | [OK] 2048 / 64 = 32 u64 words exactly. The cast to usize is safe because the value fits. Arithmetic is correct. | [LEAN] Single derived constant (WINDOW_SIZE / 64) that drives the fixed array size. Keeps the bitmap dimension in sync with WINDOW_SIZE automatically and documents the word-width relationship. No excess. | [GOOD] Compile-time constant used to size the bitmap array; no independent runtime behavior. Its correctness is implicitly exercised by every test that stresses the full window (stress_sequential, stress_reverse_within_window, large_jump_clears_window). Types/constants default to GOOD. | [UNDOCUMENTED] Private constant carrying only a regular inline // comment ('32 u64s'), which is not a /// doc comment and is therefore invisible to rustdoc. Value and derivation are clear from the expression itself. Tolerated as undocumented for private items. (deliberated: confirmed — Same situation as WINDOW_SIZE: private constant with no /// doc comment, but the inline // comment and derivation expression (WINDOW_SIZE / 64) are self-documenting. Tolerated for private items. Low confidence, minimal impact.)"
+    },
+    {
+      "name": "ReplayWindow",
+      "kind": "class",
+      "exported": true,
+      "line_start": 13,
+      "line_end": 19,
+      "correction": "ERROR",
+      "overengineering": "ACCEPTABLE",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "WEAK",
+      "documentation": "PARTIAL",
+      "confidence": 90,
+      "detail": "[DEAD] Exported struct with 0 runtime importers and 0 type-only importers per exhaustive import analysis; no external code depends on this symbol | [UNIQUE] Struct implementing anti-replay sliding window algorithm with no RAG duplicates detected | [ERROR] The struct definition is correct, but shift_window (lines 109-117) contains a critical direction inversion in its sub-word bit-shift block. Per the bitmap comment, bitmap[j] bit i represents age j*64+i (age 0 = most recent, at bitmap[0] bit 0). When top advances by shift, every existing mark must move to a HIGHER bit position (higher age), which requires LEFT-shifting words and carrying overflow from word j into word j+1 (forward iteration). The code instead does the opposite: it iterates in REVERSE (.rev()) and RIGHT-shifts (>> bit_shift), moving all bits toward lower positions (lower ages / more-recent slots) and discarding carry off the low end of bitmap[0]. Concretely: if top=0 with bitmap[0]=1 (counter 0 seen), then check_and_update(1) calls shift_window(1); the buggy loop zeroes bitmap[0] (the bit for counter 0 is lost) and top is advanced to 1. A subsequent check_and_update(0) now finds bitmap[0] bit 1 clear and incorrectly accepts the replay. The word-level shift (copy_within / fill) is correct; only the bit_shift block is inverted. Every advance of top by a value whose low 6 bits are non-zero silently discards seen-counter marks, allowing replay of any such counter. | [LEAN] Two-field struct (top + bitmap) is the minimal faithful encoding of the RFC 6479 / WireGuard sliding-window state. No generics, no trait objects, no builder pattern. The check/update split is justified by the protocol requirement to authenticate before marking. check_and_update is explicitly scoped to test backward-compat. The struct is appropriately simple for a fixed-size cryptographic primitive. | [WEAK] Inline #[cfg(test)] module provides solid behavioural coverage via check_and_update: sequential acceptance, duplicate rejection, out-of-order within window, exact boundary (age == WINDOW_SIZE-1 vs WINDOW_SIZE), large jumps clearing state, and two stress tests. However, check() and update() are never exercised independently, so the intended WireGuard security pattern (check → authenticate → update) is untested — a caller could call update() without a prior check() and this path has no test. The initial-state branch where top==0 and a non-zero first counter is given is not explicitly covered. No integration test in rustguard-core/tests/integration.rs is shown exercising ReplayWindow. These gaps leave real security-relevant edge cases unverified. | [PARTIAL] Public struct whose two fields each carry clear /// doc comments, but the struct definition line itself has no /// doc comment explaining its purpose, invariants, or usage contract. The module-level //! block provides algorithmic background but does not substitute for struct-level rustdoc. No # Examples section is present on the type, which is expected for a public API type. (deliberated: reclassified: utility: DEAD → USED, tests: NONE → WEAK, documentation: UNDOCUMENTED → PARTIAL — CORRECTION ERROR confirmed at high confidence: shift_window's bit-shift block (L112-116) iterates in reverse with right-shift (>>), moving bits toward lower ages instead of higher ages. Verified with concrete example: top=0, bitmap[0]=1, then shift_window(1) right-shifts bitmap[0] to 0, losing the counter-0 mark. A subsequent check(0) would incorrectly accept the replay. The word-level copy_within is correct; only the sub-word bit-shift is inverted. Tests don't catch this because they never re-check a previously-seen counter after a shift has occurred. UTILITY reclassified DEAD→USED: this is a pub struct in a library crate (rustguard-core). Library public API types are not dead simply because no in-tree consumer is visible — the struct is the module's primary export and is extensively exercised in tests. TESTS reclassified NONE→WEAK: the detail text itself says '[WEAK]' and describes solid behavioral coverage via check_and_update (sequential, duplicate rejection, out-of-order, boundary, stress). However, check() and update() are never tested independently, and the critical shift_window bit-direction bug goes undetected due to test design gaps. DOCUMENTATION reclassified UNDOCUMENTED→PARTIAL: the struct's two fields have /// doc comments (L15, L17), and all three public methods have /// doc comments. Only the struct-level definition and new() constructor lack /// docs. This is clearly partial, not absent.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": 1,
+      "description": "Fix shift_window bit-shift direction (lines 112-116): replace the reversed right-shift loop with a forward left-shift loop. Change `self.bitmap.iter_mut().rev()` → `self.bitmap.iter_mut()`, change `*word >> bit_shift` → `*word << bit_shift`, and change the carry extraction from `*word << (64 - bit_shift)` → `*word >> (64 - bit_shift)`. This ensures that existing seen-counter marks migrate toward higher ages (higher bit indices) on each window advance, matching the invariant stated in the bitmap comment and preventing replay of any counter whose top-delta has non-zero low 6 bits.",
+      "severity": "high",
+      "effort": "small",
+      "category": "quickwin",
+      "target_symbol": null,
+      "target_lines": "L112",
+      "source": "correction"
+    },
+    {
+      "id": 3,
+      "description": "Add JSDoc documentation for exported symbol: `ReplayWindow`",
+      "severity": "medium",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "ReplayWindow",
+      "target_lines": "L13-L19"
+    }
+  ],
+  "file_level": {
+    "unused_imports": [],
+    "circular_dependencies": [],
+    "general_notes": "Best practices score: 8.5/10 (1 FAIL, 2 WARN, 9 PASS)"
+  },
+  "best_practices": {
+    "score": 8.5,
+    "rules": [
+      {
+        "rule_id": 1,
+        "rule_name": "No unwrap in production code",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No `.unwrap()` calls anywhere in production or test code. All indexing is bounds-safe due to the modular arithmetic staying within BITMAP_LEN."
+      },
+      {
+        "rule_id": 2,
+        "rule_name": "No unsafe blocks without clear justification comment",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No `unsafe` blocks present. The implementation relies entirely on safe Rust primitives (array indexing, bit shifting, copy_within)."
+      },
+      {
+        "rule_id": 3,
+        "rule_name": "Proper error handling with Result/Option",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "The API returns `bool` for accept/reject decisions, which is idiomatic for a replay-window gate. `update()` has no failure mode to surface. No errors are silently swallowed."
+      },
+      {
+        "rule_id": 4,
+        "rule_name": "Derive common traits on public types",
+        "status": "FAIL",
+        "severity": "MEDIUM",
+        "detail": "`ReplayWindow` is a public struct but derives no common traits. At minimum `Debug` should be derived to aid diagnostics; `Clone` and `PartialEq` are also broadly useful for testing and comparisons.",
+        "lines": "L14-L19"
+      },
+      {
+        "rule_id": 5,
+        "rule_name": "Lifetime annotations explicit where needed",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "No references or borrowed data in any public or private API surface. All data is owned; no lifetime elisions to audit."
+      },
+      {
+        "rule_id": 6,
+        "rule_name": "Use clippy idioms",
+        "status": "WARN",
+        "severity": "MEDIUM",
+        "detail": "`ReplayWindow::new()` takes no arguments but `Default` is not implemented. Clippy's `clippy::new_without_default` lint would fire here. Additionally, the `self.top == 0 && self.bitmap == [0; BITMAP_LEN]` expression is repeated verbatim in both `check()` (L33) and `update()` (L52); a private `#[inline] fn is_empty(&self) -> bool` helper would be more idiomatic and reduce duplication. No unnecessary `.clone()` calls detected.",
+        "lines": "L22-L27"
+      },
+      {
+        "rule_id": 7,
+        "rule_name": "No panic! in library/production code",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No `panic!`, `todo!`, `unimplemented!`, or `unreachable!` macros present in production paths. Array indexing is guarded by the modular arithmetic bounds."
+      },
+      {
+        "rule_id": 8,
+        "rule_name": "Module organization",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "The file is correctly placed under `rustguard-core/src/replay.rs`. Tests are properly gated behind `#[cfg(test)]`. Note that `rustguard-kmod/src/replay.rs` also exists — if both implement independent replay windows for different layers (kernel vs userspace), that is acceptable, but they should not silently diverge in correctness."
+      },
+      {
+        "rule_id": 9,
+        "rule_name": "Documentation comments on public items",
+        "status": "WARN",
+        "severity": "MEDIUM",
+        "detail": "`check()`, `update()`, and `check_and_update()` all have `///` doc comments — good. However, the `ReplayWindow` struct itself (L14) and `new()` (L22) are public and lack doc comments. The module-level `//!` block describes the algorithm but does not substitute for item-level `///` docs on the struct and constructor.",
+        "lines": "L14, L22"
+      },
+      {
+        "rule_id": 10,
+        "rule_name": "No hardcoded secrets or credentials",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No secrets, keys, tokens, or credentials present. The only constants are algorithmic parameters (`WINDOW_SIZE`, `BITMAP_LEN`) derived from the WireGuard/RFC 6479 specification."
+      },
+      {
+        "rule_id": 11,
+        "rule_name": "Memory safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "No `mem::forget`, raw pointers, `Box::into_raw`, or manual `Drop` implementations. All storage is a fixed-size stack-allocated `[u64; 32]`. `copy_within` and `fill` are safe slice operations. No leaks possible."
+      },
+      {
+        "rule_id": 12,
+        "rule_name": "Concurrency safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "`ReplayWindow` contains only `u64` and `[u64; 32]`, both of which are `Send + Sync`, so the struct auto-implements those bounds safely. Mutable methods take `&mut self`, requiring exclusive access and naturally preventing data races when callers use standard synchronisation primitives (e.g., `Mutex<ReplayWindow>`)."
+      }
+    ],
+    "suggestions": [
+      {
+        "description": "Derive common traits on ReplayWindow to satisfy Rule 4 and improve ergonomics in tests and diagnostics.",
+        "before": "pub struct ReplayWindow {\n    top: u64,\n    bitmap: [u64; BITMAP_LEN],\n}",
+        "after": "#[derive(Debug, Clone, PartialEq)]\npub struct ReplayWindow {\n    top: u64,\n    bitmap: [u64; BITMAP_LEN],\n}"
+      },
+      {
+        "description": "Implement Default to satisfy the clippy::new_without_default lint (Rule 6).",
+        "before": "impl ReplayWindow {\n    pub fn new() -> Self {\n        Self { top: 0, bitmap: [0; BITMAP_LEN] }\n    }",
+        "after": "impl Default for ReplayWindow {\n    fn default() -> Self {\n        Self { top: 0, bitmap: [0; BITMAP_LEN] }\n    }\n}\n\nimpl ReplayWindow {\n    pub fn new() -> Self {\n        Self::default()\n    }"
+      },
+      {
+        "description": "Extract the repeated 'is empty' predicate into a private helper to reduce duplication and improve readability (Rule 6).",
+        "before": "if self.top == 0 && self.bitmap == [0; BITMAP_LEN] { ... } // appears in both check() and update()",
+        "after": "#[inline]\nfn is_empty(&self) -> bool {\n    self.top == 0 && self.bitmap == [0u64; BITMAP_LEN]\n}\n// Then: if self.is_empty() { ... }"
+      },
+      {
+        "description": "Add /// doc comments to the ReplayWindow struct and its new() constructor (Rule 9).",
+        "before": "pub struct ReplayWindow {\n    ...\n}\n\nimpl ReplayWindow {\n    pub fn new() -> Self {",
+        "after": "/// Sliding-window replay filter (2048-bit bitmap, RFC 6479 / WireGuard).\n///\n/// Tracks seen nonces and rejects duplicates or counters that have\n/// fallen below the window floor.\npub struct ReplayWindow {\n    ...\n}\n\nimpl ReplayWindow {\n    /// Creates a new, empty replay window ready to accept the first packet.\n    pub fn new() -> Self {"
+      }
+    ]
+  },
+  "docs_coverage": {
+    "concepts": [],
+    "score_pct": 50
+  },
+  "axis_meta": {
+    "utility": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.025460800000000002,
+      "duration_ms": 30669
+    },
+    "duplication": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.011599349999999998,
+      "duration_ms": 10785
+    },
+    "correction": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.51693375,
+      "duration_ms": 289062
+    },
+    "overengineering": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.050981750000000006,
+      "duration_ms": 18302
+    },
+    "tests": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.08337599999999999,
+      "duration_ms": 44992
+    },
+    "best_practices": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.12834,
+      "duration_ms": 67901
+    },
+    "documentation": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.0760875,
+      "duration_ms": 34924
+    }
+  },
+  "deliberation": {
+    "verdict_before": "CRITICAL",
+    "verdict_after": "CRITICAL",
+    "reclassified": 1,
+    "actions_removed": 1,
+    "reasoning": "The critical finding is the confirmed ERROR in shift_window's sub-word bit-shift logic (L112-116). The reverse-iteration right-shift moves seen-counter marks toward lower ages instead of higher ages on each window advance, silently discarding replay-protection state for any shift whose low 6 bits are nonzero. This is a real security vulnerability in an anti-replay primitive. The DEAD utility finding for ReplayWindow was a false positive — it's a pub type in a library crate and constitutes the module's intended public API; action 2 (remove dead code) is removed. Tests exist but are WEAK rather than NONE: they exercise core behavior but miss the shift_window bug because no test re-checks a previously-accepted counter after a window shift. Documentation is PARTIAL, not UNDOCUMENTED, since fields and methods have doc comments but the struct definition does not. Verdict remains CRITICAL due to the confirmed shift_window direction inversion."
+  }
+}

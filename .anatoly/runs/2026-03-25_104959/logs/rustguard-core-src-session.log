@@ -1,0 +1,2336 @@
+# Axis: utility
+
+## User
+
+## File: `rustguard-core/src/session.rs`
+## Language: rust
+
+```rust
+use alloc::vec::Vec;
+use rustguard_crypto::{self as crypto};
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+use crate::replay::ReplayWindow;
+
+/// A transport session derived from a completed handshake.
+///
+/// Each side gets a sending key and a receiving key.
+/// The initiator sends with key_send and receives with key_recv.
+/// The responder has these reversed.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct TransportSession {
+    /// Our sender index (the other side uses this as receiver_index).
+    #[zeroize(skip)]
+    pub our_index: u32,
+    /// Their sender index (we use this as receiver_index in incoming packets).
+    #[zeroize(skip)]
+    pub their_index: u32,
+    /// Key for encrypting outgoing packets.
+    key_send: [u8; 32],
+    /// Key for decrypting incoming packets.
+    key_recv: [u8; 32],
+    /// Outgoing nonce counter.
+    #[zeroize(skip)]
+    send_counter: u64,
+    /// Anti-replay window for incoming packets.
+    #[zeroize(skip)]
+    recv_window: ReplayWindow,
+}
+
+impl TransportSession {
+    pub fn new(
+        our_index: u32,
+        their_index: u32,
+        key_send: [u8; 32],
+        key_recv: [u8; 32],
+    ) -> Self {
+        Self {
+            our_index,
+            their_index,
+            key_send,
+            key_recv,
+            send_counter: 0,
+            recv_window: ReplayWindow::new(),
+        }
+    }
+
+    /// Encrypt a plaintext packet for transport.
+    /// Returns None if the nonce counter has been exhausted (rekey required).
+    pub fn encrypt(&mut self, plaintext: &[u8]) -> Option<(u64, Vec<u8>)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ciphertext = crypto::seal(&self.key_send, counter, &[], plaintext);
+        Some((counter, ciphertext))
+    }
+
+    /// Decrypt an incoming transport packet.
+    /// Checks the anti-replay window before decrypting.
+    /// Only marks the counter as seen after AEAD succeeds.
+    /// Returns None if replay detected or decryption fails.
+    pub fn decrypt(&mut self, counter: u64, ciphertext: &[u8]) -> Option<Vec<u8>> {
+        // Check replay window first — cheap before expensive AEAD.
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        // Attempt decryption. Only update replay window on success
+        // to prevent an attacker from poisoning the window with garbage.
+        let plaintext = crypto::open(&self.key_recv, counter, &[], ciphertext)?;
+        self.recv_window.update(counter);
+        Some(plaintext)
+    }
+
+    /// Zero-alloc encrypt: writes ciphertext into `out` buffer.
+    /// Returns (counter, ciphertext_len) or None if nonce exhausted.
+    /// `out` must be at least `plaintext.len() + 16` bytes.
+    pub fn encrypt_to(&mut self, plaintext: &[u8], out: &mut [u8]) -> Option<(u64, usize)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ct_len = crypto::seal_to(&self.key_send, counter, plaintext, out);
+        Some((counter, ct_len))
+    }
+
+    /// Zero-alloc decrypt: decrypts in place within `buf`.
+    /// `buf[..ct_len]` contains ciphertext+tag on input, plaintext on output.
+    /// Returns plaintext length or None.
+    pub fn decrypt_in_place(&mut self, counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        let pt_len = crypto::open_to(&self.key_recv, counter, buf, ct_len)?;
+        self.recv_window.update(counter);
+        Some(pt_len)
+    }
+
+    pub fn send_counter(&self) -> u64 {
+        self.send_counter
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_session_pair() -> (TransportSession, TransportSession) {
+        let key_a = [0x11u8; 32];
+        let key_b = [0x22u8; 32];
+
+        let initiator = TransportSession::new(1, 2, key_a, key_b);
+        let responder = TransportSession::new(2, 1, key_b, key_a);
+        (initiator, responder)
+    }
+
+    #[test]
+    fn encrypt_decrypt_roundtrip() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let plaintext = b"ping from the trenches";
+
+        let (counter, ciphertext) = initiator.encrypt(plaintext).unwrap();
+        assert_eq!(ciphertext.len(), plaintext.len() + crypto::AEAD_TAG_LEN);
+
+        let decrypted = responder.decrypt(counter, &ciphertext).unwrap();
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn counter_increments() {
+        let (mut initiator, _) = make_session_pair();
+        assert_eq!(initiator.send_counter(), 0);
+        initiator.encrypt(b"one").unwrap();
+        assert_eq!(initiator.send_counter(), 1);
+        initiator.encrypt(b"two").unwrap();
+        assert_eq!(initiator.send_counter(), 2);
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter + 1, &ciphertext).is_none());
+    }
+
+    #[test]
+    fn replay_rejected() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter, &ciphertext).is_some());
+        assert!(
+            responder.decrypt(counter, &ciphertext).is_none(),
+            "replayed packet must be rejected"
+        );
+    }
+
+    #[test]
+    fn out_of_order_accepted() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c0, ct0) = initiator.encrypt(b"zero").unwrap();
+        let (c1, ct1) = initiator.encrypt(b"one").unwrap();
+        let (c2, ct2) = initiator.encrypt(b"two").unwrap();
+
+        // Deliver out of order: 2, 0, 1.
+        assert_eq!(responder.decrypt(c2, &ct2).unwrap(), b"two");
+        assert_eq!(responder.decrypt(c0, &ct0).unwrap(), b"zero");
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"one");
+    }
+
+    #[test]
+    fn bidirectional() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c1, ct1) = initiator.encrypt(b"hello").unwrap();
+        let (c2, ct2) = responder.encrypt(b"world").unwrap();
+
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"hello");
+        assert_eq!(initiator.decrypt(c2, &ct2).unwrap(), b"world");
+    }
+}
+
+```
+
+## Symbols to evaluate
+
+- export class TransportSession (L13–L30)
+
+## Pre-computed Import Analysis
+
+- TransportSession (exported): imported by 0 files — LIKELY DEAD
+
+Evaluate the utility of each symbol and output the JSON.
+
+## System (init)
+
+**Model:** claude-haiku-4-5-20251001
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+```json
+{
+  "symbols": [
+    {
+      "name": "TransportSession",
+      "line_start": 13,
+      "line_end": 30,
+      "utility": "DEAD",
+      "confidence": 95,
+      "detail": "Exported struct with 0 runtime importers and 0 type-only importers across all files. Pre-computed analysis confirms no external modules import this symbol."
+    }
+  ]
+}
+```
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0179 | **Duration:** 18.4s
+
+
+---
+
+# Axis: duplication
+
+## User
+
+## File: `rustguard-core/src/session.rs`
+## Language: rust
+
+```rust
+use alloc::vec::Vec;
+use rustguard_crypto::{self as crypto};
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+use crate::replay::ReplayWindow;
+
+/// A transport session derived from a completed handshake.
+///
+/// Each side gets a sending key and a receiving key.
+/// The initiator sends with key_send and receives with key_recv.
+/// The responder has these reversed.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct TransportSession {
+    /// Our sender index (the other side uses this as receiver_index).
+    #[zeroize(skip)]
+    pub our_index: u32,
+    /// Their sender index (we use this as receiver_index in incoming packets).
+    #[zeroize(skip)]
+    pub their_index: u32,
+    /// Key for encrypting outgoing packets.
+    key_send: [u8; 32],
+    /// Key for decrypting incoming packets.
+    key_recv: [u8; 32],
+    /// Outgoing nonce counter.
+    #[zeroize(skip)]
+    send_counter: u64,
+    /// Anti-replay window for incoming packets.
+    #[zeroize(skip)]
+    recv_window: ReplayWindow,
+}
+
+impl TransportSession {
+    pub fn new(
+        our_index: u32,
+        their_index: u32,
+        key_send: [u8; 32],
+        key_recv: [u8; 32],
+    ) -> Self {
+        Self {
+            our_index,
+            their_index,
+            key_send,
+            key_recv,
+            send_counter: 0,
+            recv_window: ReplayWindow::new(),
+        }
+    }
+
+    /// Encrypt a plaintext packet for transport.
+    /// Returns None if the nonce counter has been exhausted (rekey required).
+    pub fn encrypt(&mut self, plaintext: &[u8]) -> Option<(u64, Vec<u8>)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ciphertext = crypto::seal(&self.key_send, counter, &[], plaintext);
+        Some((counter, ciphertext))
+    }
+
+    /// Decrypt an incoming transport packet.
+    /// Checks the anti-replay window before decrypting.
+    /// Only marks the counter as seen after AEAD succeeds.
+    /// Returns None if replay detected or decryption fails.
+    pub fn decrypt(&mut self, counter: u64, ciphertext: &[u8]) -> Option<Vec<u8>> {
+        // Check replay window first — cheap before expensive AEAD.
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        // Attempt decryption. Only update replay window on success
+        // to prevent an attacker from poisoning the window with garbage.
+        let plaintext = crypto::open(&self.key_recv, counter, &[], ciphertext)?;
+        self.recv_window.update(counter);
+        Some(plaintext)
+    }
+
+    /// Zero-alloc encrypt: writes ciphertext into `out` buffer.
+    /// Returns (counter, ciphertext_len) or None if nonce exhausted.
+    /// `out` must be at least `plaintext.len() + 16` bytes.
+    pub fn encrypt_to(&mut self, plaintext: &[u8], out: &mut [u8]) -> Option<(u64, usize)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ct_len = crypto::seal_to(&self.key_send, counter, plaintext, out);
+        Some((counter, ct_len))
+    }
+
+    /// Zero-alloc decrypt: decrypts in place within `buf`.
+    /// `buf[..ct_len]` contains ciphertext+tag on input, plaintext on output.
+    /// Returns plaintext length or None.
+    pub fn decrypt_in_place(&mut self, counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        let pt_len = crypto::open_to(&self.key_recv, counter, buf, ct_len)?;
+        self.recv_window.update(counter);
+        Some(pt_len)
+    }
+
+    pub fn send_counter(&self) -> u64 {
+        self.send_counter
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_session_pair() -> (TransportSession, TransportSession) {
+        let key_a = [0x11u8; 32];
+        let key_b = [0x22u8; 32];
+
+        let initiator = TransportSession::new(1, 2, key_a, key_b);
+        let responder = TransportSession::new(2, 1, key_b, key_a);
+        (initiator, responder)
+    }
+
+    #[test]
+    fn encrypt_decrypt_roundtrip() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let plaintext = b"ping from the trenches";
+
+        let (counter, ciphertext) = initiator.encrypt(plaintext).unwrap();
+        assert_eq!(ciphertext.len(), plaintext.len() + crypto::AEAD_TAG_LEN);
+
+        let decrypted = responder.decrypt(counter, &ciphertext).unwrap();
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn counter_increments() {
+        let (mut initiator, _) = make_session_pair();
+        assert_eq!(initiator.send_counter(), 0);
+        initiator.encrypt(b"one").unwrap();
+        assert_eq!(initiator.send_counter(), 1);
+        initiator.encrypt(b"two").unwrap();
+        assert_eq!(initiator.send_counter(), 2);
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter + 1, &ciphertext).is_none());
+    }
+
+    #[test]
+    fn replay_rejected() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter, &ciphertext).is_some());
+        assert!(
+            responder.decrypt(counter, &ciphertext).is_none(),
+            "replayed packet must be rejected"
+        );
+    }
+
+    #[test]
+    fn out_of_order_accepted() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c0, ct0) = initiator.encrypt(b"zero").unwrap();
+        let (c1, ct1) = initiator.encrypt(b"one").unwrap();
+        let (c2, ct2) = initiator.encrypt(b"two").unwrap();
+
+        // Deliver out of order: 2, 0, 1.
+        assert_eq!(responder.decrypt(c2, &ct2).unwrap(), b"two");
+        assert_eq!(responder.decrypt(c0, &ct0).unwrap(), b"zero");
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"one");
+    }
+
+    #[test]
+    fn bidirectional() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c1, ct1) = initiator.encrypt(b"hello").unwrap();
+        let (c2, ct2) = responder.encrypt(b"world").unwrap();
+
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"hello");
+        assert_eq!(initiator.decrypt(c2, &ct2).unwrap(), b"world");
+    }
+}
+
+```
+
+## Symbols to evaluate
+
+- export class TransportSession (L13–L30)
+
+## RAG — Semantic Duplication
+
+No RAG data available. Mark all symbols as UNIQUE (confidence: 90).
+
+Evaluate the duplication of each symbol and output the JSON.
+
+## System (init)
+
+**Model:** claude-haiku-4-5-20251001
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+```json
+{
+  "symbols": [
+    {
+      "name": "TransportSession",
+      "line_start": 13,
+      "line_end": 30,
+      "duplication": "UNIQUE",
+      "confidence": 90,
+      "detail": "No RAG similarity data available; no matching duplicates detected in codebase for this cryptographic transport session struct.",
+      "duplicate_target": null
+    }
+  ]
+}
+```
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0148 | **Duration:** 16.1s
+
+
+---
+
+# Axis: correction
+
+## User
+
+## File: `rustguard-core/src/session.rs`
+## Language: rust
+
+```rust
+use alloc::vec::Vec;
+use rustguard_crypto::{self as crypto};
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+use crate::replay::ReplayWindow;
+
+/// A transport session derived from a completed handshake.
+///
+/// Each side gets a sending key and a receiving key.
+/// The initiator sends with key_send and receives with key_recv.
+/// The responder has these reversed.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct TransportSession {
+    /// Our sender index (the other side uses this as receiver_index).
+    #[zeroize(skip)]
+    pub our_index: u32,
+    /// Their sender index (we use this as receiver_index in incoming packets).
+    #[zeroize(skip)]
+    pub their_index: u32,
+    /// Key for encrypting outgoing packets.
+    key_send: [u8; 32],
+    /// Key for decrypting incoming packets.
+    key_recv: [u8; 32],
+    /// Outgoing nonce counter.
+    #[zeroize(skip)]
+    send_counter: u64,
+    /// Anti-replay window for incoming packets.
+    #[zeroize(skip)]
+    recv_window: ReplayWindow,
+}
+
+impl TransportSession {
+    pub fn new(
+        our_index: u32,
+        their_index: u32,
+        key_send: [u8; 32],
+        key_recv: [u8; 32],
+    ) -> Self {
+        Self {
+            our_index,
+            their_index,
+            key_send,
+            key_recv,
+            send_counter: 0,
+            recv_window: ReplayWindow::new(),
+        }
+    }
+
+    /// Encrypt a plaintext packet for transport.
+    /// Returns None if the nonce counter has been exhausted (rekey required).
+    pub fn encrypt(&mut self, plaintext: &[u8]) -> Option<(u64, Vec<u8>)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ciphertext = crypto::seal(&self.key_send, counter, &[], plaintext);
+        Some((counter, ciphertext))
+    }
+
+    /// Decrypt an incoming transport packet.
+    /// Checks the anti-replay window before decrypting.
+    /// Only marks the counter as seen after AEAD succeeds.
+    /// Returns None if replay detected or decryption fails.
+    pub fn decrypt(&mut self, counter: u64, ciphertext: &[u8]) -> Option<Vec<u8>> {
+        // Check replay window first — cheap before expensive AEAD.
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        // Attempt decryption. Only update replay window on success
+        // to prevent an attacker from poisoning the window with garbage.
+        let plaintext = crypto::open(&self.key_recv, counter, &[], ciphertext)?;
+        self.recv_window.update(counter);
+        Some(plaintext)
+    }
+
+    /// Zero-alloc encrypt: writes ciphertext into `out` buffer.
+    /// Returns (counter, ciphertext_len) or None if nonce exhausted.
+    /// `out` must be at least `plaintext.len() + 16` bytes.
+    pub fn encrypt_to(&mut self, plaintext: &[u8], out: &mut [u8]) -> Option<(u64, usize)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ct_len = crypto::seal_to(&self.key_send, counter, plaintext, out);
+        Some((counter, ct_len))
+    }
+
+    /// Zero-alloc decrypt: decrypts in place within `buf`.
+    /// `buf[..ct_len]` contains ciphertext+tag on input, plaintext on output.
+    /// Returns plaintext length or None.
+    pub fn decrypt_in_place(&mut self, counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        let pt_len = crypto::open_to(&self.key_recv, counter, buf, ct_len)?;
+        self.recv_window.update(counter);
+        Some(pt_len)
+    }
+
+    pub fn send_counter(&self) -> u64 {
+        self.send_counter
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_session_pair() -> (TransportSession, TransportSession) {
+        let key_a = [0x11u8; 32];
+        let key_b = [0x22u8; 32];
+
+        let initiator = TransportSession::new(1, 2, key_a, key_b);
+        let responder = TransportSession::new(2, 1, key_b, key_a);
+        (initiator, responder)
+    }
+
+    #[test]
+    fn encrypt_decrypt_roundtrip() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let plaintext = b"ping from the trenches";
+
+        let (counter, ciphertext) = initiator.encrypt(plaintext).unwrap();
+        assert_eq!(ciphertext.len(), plaintext.len() + crypto::AEAD_TAG_LEN);
+
+        let decrypted = responder.decrypt(counter, &ciphertext).unwrap();
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn counter_increments() {
+        let (mut initiator, _) = make_session_pair();
+        assert_eq!(initiator.send_counter(), 0);
+        initiator.encrypt(b"one").unwrap();
+        assert_eq!(initiator.send_counter(), 1);
+        initiator.encrypt(b"two").unwrap();
+        assert_eq!(initiator.send_counter(), 2);
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter + 1, &ciphertext).is_none());
+    }
+
+    #[test]
+    fn replay_rejected() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter, &ciphertext).is_some());
+        assert!(
+            responder.decrypt(counter, &ciphertext).is_none(),
+            "replayed packet must be rejected"
+        );
+    }
+
+    #[test]
+    fn out_of_order_accepted() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c0, ct0) = initiator.encrypt(b"zero").unwrap();
+        let (c1, ct1) = initiator.encrypt(b"one").unwrap();
+        let (c2, ct2) = initiator.encrypt(b"two").unwrap();
+
+        // Deliver out of order: 2, 0, 1.
+        assert_eq!(responder.decrypt(c2, &ct2).unwrap(), b"two");
+        assert_eq!(responder.decrypt(c0, &ct0).unwrap(), b"zero");
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"one");
+    }
+
+    #[test]
+    fn bidirectional() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c1, ct1) = initiator.encrypt(b"hello").unwrap();
+        let (c2, ct2) = responder.encrypt(b"world").unwrap();
+
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"hello");
+        assert_eq!(initiator.decrypt(c2, &ct2).unwrap(), b"world");
+    }
+}
+
+```
+
+## Symbols to evaluate
+
+- export class TransportSession (L13–L30)
+
+Identify any bugs, logic errors, or correctness issues and output the JSON.
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+{
+  "symbols": [
+    {
+      "name": "TransportSession",
+      "line_start": 13,
+      "line_end": 30,
+      "correction": "OK",
+      "confidence": 92,
+      "detail": "The struct definition is correct. Fields are properly typed: keys are [u8; 32], counters are u64, and the replay window is a dedicated type. Zeroize/ZeroizeOnDrop are correctly applied to the key fields while index and counter fields are skipped (acceptable — they contain no secret material). No logic errors, type mismatches, or unsafe operations are present in the struct definition itself."
+    }
+  ],
+  "actions": []
+}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0310 | **Duration:** 5.2s
+
+
+---
+
+# Axis: overengineering
+
+## User
+
+## File: `rustguard-core/src/session.rs`
+## Language: rust
+
+```rust
+use alloc::vec::Vec;
+use rustguard_crypto::{self as crypto};
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+use crate::replay::ReplayWindow;
+
+/// A transport session derived from a completed handshake.
+///
+/// Each side gets a sending key and a receiving key.
+/// The initiator sends with key_send and receives with key_recv.
+/// The responder has these reversed.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct TransportSession {
+    /// Our sender index (the other side uses this as receiver_index).
+    #[zeroize(skip)]
+    pub our_index: u32,
+    /// Their sender index (we use this as receiver_index in incoming packets).
+    #[zeroize(skip)]
+    pub their_index: u32,
+    /// Key for encrypting outgoing packets.
+    key_send: [u8; 32],
+    /// Key for decrypting incoming packets.
+    key_recv: [u8; 32],
+    /// Outgoing nonce counter.
+    #[zeroize(skip)]
+    send_counter: u64,
+    /// Anti-replay window for incoming packets.
+    #[zeroize(skip)]
+    recv_window: ReplayWindow,
+}
+
+impl TransportSession {
+    pub fn new(
+        our_index: u32,
+        their_index: u32,
+        key_send: [u8; 32],
+        key_recv: [u8; 32],
+    ) -> Self {
+        Self {
+            our_index,
+            their_index,
+            key_send,
+            key_recv,
+            send_counter: 0,
+            recv_window: ReplayWindow::new(),
+        }
+    }
+
+    /// Encrypt a plaintext packet for transport.
+    /// Returns None if the nonce counter has been exhausted (rekey required).
+    pub fn encrypt(&mut self, plaintext: &[u8]) -> Option<(u64, Vec<u8>)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ciphertext = crypto::seal(&self.key_send, counter, &[], plaintext);
+        Some((counter, ciphertext))
+    }
+
+    /// Decrypt an incoming transport packet.
+    /// Checks the anti-replay window before decrypting.
+    /// Only marks the counter as seen after AEAD succeeds.
+    /// Returns None if replay detected or decryption fails.
+    pub fn decrypt(&mut self, counter: u64, ciphertext: &[u8]) -> Option<Vec<u8>> {
+        // Check replay window first — cheap before expensive AEAD.
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        // Attempt decryption. Only update replay window on success
+        // to prevent an attacker from poisoning the window with garbage.
+        let plaintext = crypto::open(&self.key_recv, counter, &[], ciphertext)?;
+        self.recv_window.update(counter);
+        Some(plaintext)
+    }
+
+    /// Zero-alloc encrypt: writes ciphertext into `out` buffer.
+    /// Returns (counter, ciphertext_len) or None if nonce exhausted.
+    /// `out` must be at least `plaintext.len() + 16` bytes.
+    pub fn encrypt_to(&mut self, plaintext: &[u8], out: &mut [u8]) -> Option<(u64, usize)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ct_len = crypto::seal_to(&self.key_send, counter, plaintext, out);
+        Some((counter, ct_len))
+    }
+
+    /// Zero-alloc decrypt: decrypts in place within `buf`.
+    /// `buf[..ct_len]` contains ciphertext+tag on input, plaintext on output.
+    /// Returns plaintext length or None.
+    pub fn decrypt_in_place(&mut self, counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        let pt_len = crypto::open_to(&self.key_recv, counter, buf, ct_len)?;
+        self.recv_window.update(counter);
+        Some(pt_len)
+    }
+
+    pub fn send_counter(&self) -> u64 {
+        self.send_counter
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_session_pair() -> (TransportSession, TransportSession) {
+        let key_a = [0x11u8; 32];
+        let key_b = [0x22u8; 32];
+
+        let initiator = TransportSession::new(1, 2, key_a, key_b);
+        let responder = TransportSession::new(2, 1, key_b, key_a);
+        (initiator, responder)
+    }
+
+    #[test]
+    fn encrypt_decrypt_roundtrip() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let plaintext = b"ping from the trenches";
+
+        let (counter, ciphertext) = initiator.encrypt(plaintext).unwrap();
+        assert_eq!(ciphertext.len(), plaintext.len() + crypto::AEAD_TAG_LEN);
+
+        let decrypted = responder.decrypt(counter, &ciphertext).unwrap();
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn counter_increments() {
+        let (mut initiator, _) = make_session_pair();
+        assert_eq!(initiator.send_counter(), 0);
+        initiator.encrypt(b"one").unwrap();
+        assert_eq!(initiator.send_counter(), 1);
+        initiator.encrypt(b"two").unwrap();
+        assert_eq!(initiator.send_counter(), 2);
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter + 1, &ciphertext).is_none());
+    }
+
+    #[test]
+    fn replay_rejected() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter, &ciphertext).is_some());
+        assert!(
+            responder.decrypt(counter, &ciphertext).is_none(),
+            "replayed packet must be rejected"
+        );
+    }
+
+    #[test]
+    fn out_of_order_accepted() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c0, ct0) = initiator.encrypt(b"zero").unwrap();
+        let (c1, ct1) = initiator.encrypt(b"one").unwrap();
+        let (c2, ct2) = initiator.encrypt(b"two").unwrap();
+
+        // Deliver out of order: 2, 0, 1.
+        assert_eq!(responder.decrypt(c2, &ct2).unwrap(), b"two");
+        assert_eq!(responder.decrypt(c0, &ct0).unwrap(), b"zero");
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"one");
+    }
+
+    #[test]
+    fn bidirectional() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c1, ct1) = initiator.encrypt(b"hello").unwrap();
+        let (c2, ct2) = responder.encrypt(b"world").unwrap();
+
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"hello");
+        assert_eq!(initiator.decrypt(c2, &ct2).unwrap(), b"world");
+    }
+}
+
+```
+
+## Symbols to evaluate
+
+- export class TransportSession (L13–L30)
+
+## Project Structure
+
+```
+├── rustguard-cli/
+│   └── src/
+│       └── main.rs
+├── rustguard-core/
+│   ├── src/
+│   │   ├── cookie.rs
+│   │   ├── handshake.rs
+│   │   ├── lib.rs
+│   │   ├── messages.rs
+│   │   ├── replay.rs
+│   │   ├── session.rs
+│   │   └── timers.rs
+│   └── tests/
+│       └── integration.rs
+├── rustguard-crypto/
+│   └── src/
+│       ├── aead.rs
+│       ├── blake2s.rs
+│       ├── lib.rs
+│       ├── tai64n.rs
+│       └── x25519.rs
+├── rustguard-daemon/
+│   └── src/
+│       ├── config.rs
+│       ├── lib.rs
+│       ├── peer.rs
+│       └── tunnel.rs
+├── rustguard-enroll/
+│   └── src/
+│       ├── client.rs
+│       ├── control.rs
+│       ├── fast_udp.rs
+│       ├── lib.rs
+│       ├── packet.rs
+│       ├── pool.rs
+│       ├── protocol.rs
+│       ├── server.rs
+│       └── state.rs
+├── rustguard-kmod/
+│   └── src/
+│       ├── allowedips.rs
+│       ├── cookie.rs
+│       ├── lib.rs
+│       ├── noise.rs
+│       ├── replay.rs
+│       └── timers.rs
+└── rustguard-tun/
+    ├── examples/
+    │   └── tun_echo.rs
+    └── src/
+        ├── bpf_loader.rs
+        ├── lib.rs
+        ├── linux_mq.rs
+        ├── linux.rs
+        ├── macos.rs
+        ├── uring.rs
+        └── xdp.rs
+```
+
+Use the project structure to detect excessive fragmentation:
+- Directory with only 1 file → potential fragmentation
+- More than 5 nesting levels → excessive structural complexity
+- Factory/adapter directories with ≤ 2 files → likely over-engineering
+These heuristics may increase a symbol's rating from LEAN to OVER.
+
+Evaluate the complexity of each symbol and output the JSON.
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+{
+  "symbols": [
+    {
+      "name": "TransportSession",
+      "line_start": 13,
+      "line_end": 30,
+      "overengineering": "LEAN",
+      "confidence": 92,
+      "detail": "The struct holds exactly the fields mandated by WireGuard-style transport: two session indices for packet routing, a send key, a receive key, an outgoing nonce counter, and an anti-replay window. Nothing extraneous. The selective `#[zeroize(skip)]` annotations are correctly applied only to non-secret fields (indices, counter, replay window), showing disciplined, purposeful use of the derive macros rather than cargo-cult application. No unnecessary generics, no abstraction layers, no configuration indirection — just the minimal state a bidirectional AEAD transport session requires."
+    }
+  ]
+}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0674 | **Duration:** 25.7s
+
+
+---
+
+# Axis: tests
+
+## User
+
+## File: `rustguard-core/src/session.rs`
+## Language: rust
+
+```rust
+use alloc::vec::Vec;
+use rustguard_crypto::{self as crypto};
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+use crate::replay::ReplayWindow;
+
+/// A transport session derived from a completed handshake.
+///
+/// Each side gets a sending key and a receiving key.
+/// The initiator sends with key_send and receives with key_recv.
+/// The responder has these reversed.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct TransportSession {
+    /// Our sender index (the other side uses this as receiver_index).
+    #[zeroize(skip)]
+    pub our_index: u32,
+    /// Their sender index (we use this as receiver_index in incoming packets).
+    #[zeroize(skip)]
+    pub their_index: u32,
+    /// Key for encrypting outgoing packets.
+    key_send: [u8; 32],
+    /// Key for decrypting incoming packets.
+    key_recv: [u8; 32],
+    /// Outgoing nonce counter.
+    #[zeroize(skip)]
+    send_counter: u64,
+    /// Anti-replay window for incoming packets.
+    #[zeroize(skip)]
+    recv_window: ReplayWindow,
+}
+
+impl TransportSession {
+    pub fn new(
+        our_index: u32,
+        their_index: u32,
+        key_send: [u8; 32],
+        key_recv: [u8; 32],
+    ) -> Self {
+        Self {
+            our_index,
+            their_index,
+            key_send,
+            key_recv,
+            send_counter: 0,
+            recv_window: ReplayWindow::new(),
+        }
+    }
+
+    /// Encrypt a plaintext packet for transport.
+    /// Returns None if the nonce counter has been exhausted (rekey required).
+    pub fn encrypt(&mut self, plaintext: &[u8]) -> Option<(u64, Vec<u8>)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ciphertext = crypto::seal(&self.key_send, counter, &[], plaintext);
+        Some((counter, ciphertext))
+    }
+
+    /// Decrypt an incoming transport packet.
+    /// Checks the anti-replay window before decrypting.
+    /// Only marks the counter as seen after AEAD succeeds.
+    /// Returns None if replay detected or decryption fails.
+    pub fn decrypt(&mut self, counter: u64, ciphertext: &[u8]) -> Option<Vec<u8>> {
+        // Check replay window first — cheap before expensive AEAD.
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        // Attempt decryption. Only update replay window on success
+        // to prevent an attacker from poisoning the window with garbage.
+        let plaintext = crypto::open(&self.key_recv, counter, &[], ciphertext)?;
+        self.recv_window.update(counter);
+        Some(plaintext)
+    }
+
+    /// Zero-alloc encrypt: writes ciphertext into `out` buffer.
+    /// Returns (counter, ciphertext_len) or None if nonce exhausted.
+    /// `out` must be at least `plaintext.len() + 16` bytes.
+    pub fn encrypt_to(&mut self, plaintext: &[u8], out: &mut [u8]) -> Option<(u64, usize)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ct_len = crypto::seal_to(&self.key_send, counter, plaintext, out);
+        Some((counter, ct_len))
+    }
+
+    /// Zero-alloc decrypt: decrypts in place within `buf`.
+    /// `buf[..ct_len]` contains ciphertext+tag on input, plaintext on output.
+    /// Returns plaintext length or None.
+    pub fn decrypt_in_place(&mut self, counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        let pt_len = crypto::open_to(&self.key_recv, counter, buf, ct_len)?;
+        self.recv_window.update(counter);
+        Some(pt_len)
+    }
+
+    pub fn send_counter(&self) -> u64 {
+        self.send_counter
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_session_pair() -> (TransportSession, TransportSession) {
+        let key_a = [0x11u8; 32];
+        let key_b = [0x22u8; 32];
+
+        let initiator = TransportSession::new(1, 2, key_a, key_b);
+        let responder = TransportSession::new(2, 1, key_b, key_a);
+        (initiator, responder)
+    }
+
+    #[test]
+    fn encrypt_decrypt_roundtrip() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let plaintext = b"ping from the trenches";
+
+        let (counter, ciphertext) = initiator.encrypt(plaintext).unwrap();
+        assert_eq!(ciphertext.len(), plaintext.len() + crypto::AEAD_TAG_LEN);
+
+        let decrypted = responder.decrypt(counter, &ciphertext).unwrap();
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn counter_increments() {
+        let (mut initiator, _) = make_session_pair();
+        assert_eq!(initiator.send_counter(), 0);
+        initiator.encrypt(b"one").unwrap();
+        assert_eq!(initiator.send_counter(), 1);
+        initiator.encrypt(b"two").unwrap();
+        assert_eq!(initiator.send_counter(), 2);
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter + 1, &ciphertext).is_none());
+    }
+
+    #[test]
+    fn replay_rejected() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter, &ciphertext).is_some());
+        assert!(
+            responder.decrypt(counter, &ciphertext).is_none(),
+            "replayed packet must be rejected"
+        );
+    }
+
+    #[test]
+    fn out_of_order_accepted() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c0, ct0) = initiator.encrypt(b"zero").unwrap();
+        let (c1, ct1) = initiator.encrypt(b"one").unwrap();
+        let (c2, ct2) = initiator.encrypt(b"two").unwrap();
+
+        // Deliver out of order: 2, 0, 1.
+        assert_eq!(responder.decrypt(c2, &ct2).unwrap(), b"two");
+        assert_eq!(responder.decrypt(c0, &ct0).unwrap(), b"zero");
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"one");
+    }
+
+    #[test]
+    fn bidirectional() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c1, ct1) = initiator.encrypt(b"hello").unwrap();
+        let (c2, ct2) = responder.encrypt(b"world").unwrap();
+
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"hello");
+        assert_eq!(initiator.decrypt(c2, &ct2).unwrap(), b"world");
+    }
+}
+
+```
+
+## Symbols to evaluate
+
+- export class TransportSession (L13–L30)
+
+## Test File
+
+No test file found for this source file.
+
+## Project Structure
+
+```
+├── rustguard-cli/
+│   └── src/
+│       └── main.rs
+├── rustguard-core/
+│   ├── src/
+│   │   ├── cookie.rs
+│   │   ├── handshake.rs
+│   │   ├── lib.rs
+│   │   ├── messages.rs
+│   │   ├── replay.rs
+│   │   ├── session.rs
+│   │   └── timers.rs
+│   └── tests/
+│       └── integration.rs
+├── rustguard-crypto/
+│   └── src/
+│       ├── aead.rs
+│       ├── blake2s.rs
+│       ├── lib.rs
+│       ├── tai64n.rs
+│       └── x25519.rs
+├── rustguard-daemon/
+│   └── src/
+│       ├── config.rs
+│       ├── lib.rs
+│       ├── peer.rs
+│       └── tunnel.rs
+├── rustguard-enroll/
+│   └── src/
+│       ├── client.rs
+│       ├── control.rs
+│       ├── fast_udp.rs
+│       ├── lib.rs
+│       ├── packet.rs
+│       ├── pool.rs
+│       ├── protocol.rs
+│       ├── server.rs
+│       └── state.rs
+├── rustguard-kmod/
+│   └── src/
+│       ├── allowedips.rs
+│       ├── cookie.rs
+│       ├── lib.rs
+│       ├── noise.rs
+│       ├── replay.rs
+│       └── timers.rs
+└── rustguard-tun/
+    ├── examples/
+    │   └── tun_echo.rs
+    └── src/
+        ├── bpf_loader.rs
+        ├── lib.rs
+        ├── linux_mq.rs
+        ├── linux.rs
+        ├── macos.rs
+        ├── uring.rs
+        └── xdp.rs
+```
+
+Evaluate the test quality for each symbol and output the JSON.
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+{
+  "symbols": [
+    {
+      "name": "TransportSession",
+      "line_start": 13,
+      "line_end": 30,
+      "tests": "WEAK",
+      "confidence": 88,
+      "detail": "Inline #[cfg(test)] module provides solid coverage of the core API: encrypt/decrypt roundtrip, counter monotonicity, wrong-counter rejection, anti-replay window, out-of-order delivery, and bidirectional use. However, the two zero-alloc variants — encrypt_to and decrypt_in_place — have zero test coverage despite being public API surface. Nonce exhaustion (send_counter wrapping via checked_add returning None) is also untested. Empty plaintext and truncated/corrupted ciphertext edge cases are absent. The missing coverage of encrypt_to/decrypt_in_place is the most significant gap since those paths exercise a separate code branch (crypto::seal_to / crypto::open_to) that could silently misbehave."
+    }
+  ]
+}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0580 | **Duration:** 20.5s
+
+
+---
+
+# Axis: best_practices
+
+## User
+
+## File: `rustguard-core/src/session.rs`
+## Language: rust
+## Context: general
+
+```rust
+use alloc::vec::Vec;
+use rustguard_crypto::{self as crypto};
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+use crate::replay::ReplayWindow;
+
+/// A transport session derived from a completed handshake.
+///
+/// Each side gets a sending key and a receiving key.
+/// The initiator sends with key_send and receives with key_recv.
+/// The responder has these reversed.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct TransportSession {
+    /// Our sender index (the other side uses this as receiver_index).
+    #[zeroize(skip)]
+    pub our_index: u32,
+    /// Their sender index (we use this as receiver_index in incoming packets).
+    #[zeroize(skip)]
+    pub their_index: u32,
+    /// Key for encrypting outgoing packets.
+    key_send: [u8; 32],
+    /// Key for decrypting incoming packets.
+    key_recv: [u8; 32],
+    /// Outgoing nonce counter.
+    #[zeroize(skip)]
+    send_counter: u64,
+    /// Anti-replay window for incoming packets.
+    #[zeroize(skip)]
+    recv_window: ReplayWindow,
+}
+
+impl TransportSession {
+    pub fn new(
+        our_index: u32,
+        their_index: u32,
+        key_send: [u8; 32],
+        key_recv: [u8; 32],
+    ) -> Self {
+        Self {
+            our_index,
+            their_index,
+            key_send,
+            key_recv,
+            send_counter: 0,
+            recv_window: ReplayWindow::new(),
+        }
+    }
+
+    /// Encrypt a plaintext packet for transport.
+    /// Returns None if the nonce counter has been exhausted (rekey required).
+    pub fn encrypt(&mut self, plaintext: &[u8]) -> Option<(u64, Vec<u8>)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ciphertext = crypto::seal(&self.key_send, counter, &[], plaintext);
+        Some((counter, ciphertext))
+    }
+
+    /// Decrypt an incoming transport packet.
+    /// Checks the anti-replay window before decrypting.
+    /// Only marks the counter as seen after AEAD succeeds.
+    /// Returns None if replay detected or decryption fails.
+    pub fn decrypt(&mut self, counter: u64, ciphertext: &[u8]) -> Option<Vec<u8>> {
+        // Check replay window first — cheap before expensive AEAD.
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        // Attempt decryption. Only update replay window on success
+        // to prevent an attacker from poisoning the window with garbage.
+        let plaintext = crypto::open(&self.key_recv, counter, &[], ciphertext)?;
+        self.recv_window.update(counter);
+        Some(plaintext)
+    }
+
+    /// Zero-alloc encrypt: writes ciphertext into `out` buffer.
+    /// Returns (counter, ciphertext_len) or None if nonce exhausted.
+    /// `out` must be at least `plaintext.len() + 16` bytes.
+    pub fn encrypt_to(&mut self, plaintext: &[u8], out: &mut [u8]) -> Option<(u64, usize)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ct_len = crypto::seal_to(&self.key_send, counter, plaintext, out);
+        Some((counter, ct_len))
+    }
+
+    /// Zero-alloc decrypt: decrypts in place within `buf`.
+    /// `buf[..ct_len]` contains ciphertext+tag on input, plaintext on output.
+    /// Returns plaintext length or None.
+    pub fn decrypt_in_place(&mut self, counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        let pt_len = crypto::open_to(&self.key_recv, counter, buf, ct_len)?;
+        self.recv_window.update(counter);
+        Some(pt_len)
+    }
+
+    pub fn send_counter(&self) -> u64 {
+        self.send_counter
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_session_pair() -> (TransportSession, TransportSession) {
+        let key_a = [0x11u8; 32];
+        let key_b = [0x22u8; 32];
+
+        let initiator = TransportSession::new(1, 2, key_a, key_b);
+        let responder = TransportSession::new(2, 1, key_b, key_a);
+        (initiator, responder)
+    }
+
+    #[test]
+    fn encrypt_decrypt_roundtrip() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let plaintext = b"ping from the trenches";
+
+        let (counter, ciphertext) = initiator.encrypt(plaintext).unwrap();
+        assert_eq!(ciphertext.len(), plaintext.len() + crypto::AEAD_TAG_LEN);
+
+        let decrypted = responder.decrypt(counter, &ciphertext).unwrap();
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn counter_increments() {
+        let (mut initiator, _) = make_session_pair();
+        assert_eq!(initiator.send_counter(), 0);
+        initiator.encrypt(b"one").unwrap();
+        assert_eq!(initiator.send_counter(), 1);
+        initiator.encrypt(b"two").unwrap();
+        assert_eq!(initiator.send_counter(), 2);
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter + 1, &ciphertext).is_none());
+    }
+
+    #[test]
+    fn replay_rejected() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter, &ciphertext).is_some());
+        assert!(
+            responder.decrypt(counter, &ciphertext).is_none(),
+            "replayed packet must be rejected"
+        );
+    }
+
+    #[test]
+    fn out_of_order_accepted() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c0, ct0) = initiator.encrypt(b"zero").unwrap();
+        let (c1, ct1) = initiator.encrypt(b"one").unwrap();
+        let (c2, ct2) = initiator.encrypt(b"two").unwrap();
+
+        // Deliver out of order: 2, 0, 1.
+        assert_eq!(responder.decrypt(c2, &ct2).unwrap(), b"two");
+        assert_eq!(responder.decrypt(c0, &ct0).unwrap(), b"zero");
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"one");
+    }
+
+    #[test]
+    fn bidirectional() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c1, ct1) = initiator.encrypt(b"hello").unwrap();
+        let (c2, ct2) = responder.encrypt(b"world").unwrap();
+
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"hello");
+        assert_eq!(initiator.decrypt(c2, &ct2).unwrap(), b"world");
+    }
+}
+
+```
+
+## File stats
+- Lines: 178
+- Symbols: 1
+- Exported symbols: 1
+
+## Project Structure
+
+```
+├── rustguard-cli/
+│   └── src/
+│       └── main.rs
+├── rustguard-core/
+│   ├── src/
+│   │   ├── cookie.rs
+│   │   ├── handshake.rs
+│   │   ├── lib.rs
+│   │   ├── messages.rs
+│   │   ├── replay.rs
+│   │   ├── session.rs
+│   │   └── timers.rs
+│   └── tests/
+│       └── integration.rs
+├── rustguard-crypto/
+│   └── src/
+│       ├── aead.rs
+│       ├── blake2s.rs
+│       ├── lib.rs
+│       ├── tai64n.rs
+│       └── x25519.rs
+├── rustguard-daemon/
+│   └── src/
+│       ├── config.rs
+│       ├── lib.rs
+│       ├── peer.rs
+│       └── tunnel.rs
+├── rustguard-enroll/
+│   └── src/
+│       ├── client.rs
+│       ├── control.rs
+│       ├── fast_udp.rs
+│       ├── lib.rs
+│       ├── packet.rs
+│       ├── pool.rs
+│       ├── protocol.rs
+│       ├── server.rs
+│       └── state.rs
+├── rustguard-kmod/
+│   └── src/
+│       ├── allowedips.rs
+│       ├── cookie.rs
+│       ├── lib.rs
+│       ├── noise.rs
+│       ├── replay.rs
+│       └── timers.rs
+└── rustguard-tun/
+    ├── examples/
+    │   └── tun_echo.rs
+    └── src/
+        ├── bpf_loader.rs
+        ├── lib.rs
+        ├── linux_mq.rs
+        ├── linux.rs
+        ├── macos.rs
+        ├── uring.rs
+        └── xdp.rs
+```
+
+Use the project structure above to evaluate rule 11 (import organization) and detect file placement inconsistencies. If the file is in an unexpected directory given the project conventions, flag it as WARN for the most relevant rule.
+
+Evaluate all 17 rules and output the JSON.
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+{
+  "score": 9.0,
+  "rules": [
+    {
+      "rule_id": 1,
+      "rule_name": "No unwrap in production code",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "detail": "All `.unwrap()` calls are confined to the `#[cfg(test)]` module. Production methods (`encrypt`, `decrypt`, `encrypt_to`, `decrypt_in_place`) return `Option<T>` and propagate failure cleanly via `?` or early `None` returns. Rule 1 is always PASS for test modules per policy.",
+      "lines": "L107-L178"
+    },
+    {
+      "rule_id": 2,
+      "rule_name": "No unsafe blocks without justification",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "detail": "No `unsafe` blocks appear anywhere in the file."
+    },
+    {
+      "rule_id": 3,
+      "rule_name": "Proper error handling with Result/Option",
+      "status": "PASS",
+      "severity": "HIGH",
+      "detail": "`checked_add(1)?` guards the nonce counter against overflow; `crypto::open` is chained with `?` so a failed AEAD tag never produces a plaintext value silently. The replay-window update is correctly deferred until after successful decryption, preventing window-poisoning attacks. No silent ignores found."
+    },
+    {
+      "rule_id": 4,
+      "rule_name": "Derive common traits on public types",
+      "status": "WARN",
+      "severity": "MEDIUM",
+      "detail": "`TransportSession` is a public struct that derives only `Zeroize` and `ZeroizeOnDrop`. `Debug`, `Clone`, and `PartialEq` are absent. Omitting `Clone` and `PartialEq` is defensible for a stateful cryptographic session — cloning would duplicate mutable counters and replay windows with shared state semantics. However, a custom `Debug` impl that redacts key material (printing `[REDACTED]` for `key_send`/`key_recv`) would aid debuggability without leaking secrets.",
+      "lines": "L11-L12"
+    },
+    {
+      "rule_id": 5,
+      "rule_name": "Lifetime annotations explicit where needed",
+      "status": "PASS",
+      "severity": "MEDIUM",
+      "detail": "All method signatures use simple single-reference parameters (`&[u8]`, `&mut [u8]`). Lifetime elision is unambiguous in every case; explicit annotations would add noise without clarity."
+    },
+    {
+      "rule_id": 6,
+      "rule_name": "Clippy idioms",
+      "status": "PASS",
+      "severity": "MEDIUM",
+      "detail": "No unnecessary `clone()` calls, no manual loops where iterator chains would be cleaner, and counter arithmetic uses `checked_add` rather than a bare `+` — all idiomatic Rust."
+    },
+    {
+      "rule_id": 7,
+      "rule_name": "No panic! in library/production code",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "detail": "No `panic!`, `todo!`, `unreachable!`, or `unimplemented!` macros appear in production paths. Test assertions use standard `assert_eq!`/`assert!` which is acceptable per policy."
+    },
+    {
+      "rule_id": 8,
+      "rule_name": "Module organization",
+      "status": "PASS",
+      "severity": "MEDIUM",
+      "detail": "`session.rs` sits correctly alongside `replay.rs`, `handshake.rs`, and `messages.rs` inside `rustguard-core/src/`, consistent with the project's flat-module layout for the core crate. Internal use of `crate::replay::ReplayWindow` follows the established intra-crate path convention."
+    },
+    {
+      "rule_id": 9,
+      "rule_name": "Documentation comments on public items",
+      "status": "WARN",
+      "severity": "MEDIUM",
+      "detail": "The struct and four of its methods carry `///` doc comments. However, `TransportSession::new` and `TransportSession::send_counter` are both `pub` and lack doc comments entirely.",
+      "lines": "L35-L46, L93-L95"
+    },
+    {
+      "rule_id": 10,
+      "rule_name": "No hardcoded secrets or credentials",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "detail": "The only literal key bytes (`[0x11u8; 32]`, `[0x22u8; 32]`) appear exclusively inside `#[cfg(test)]` and are clearly synthetic test vectors with no production relevance."
+    },
+    {
+      "rule_id": 11,
+      "rule_name": "Memory safety",
+      "status": "PASS",
+      "severity": "HIGH",
+      "detail": "`#[derive(Zeroize, ZeroizeOnDrop)]` ensures `key_send` and `key_recv` are overwritten with zeros when the session is dropped, preventing key material from lingering in heap/stack memory. No `mem::forget`, `Box::leak`, or manual `Drop` anti-patterns are present."
+    },
+    {
+      "rule_id": 12,
+      "rule_name": "Concurrency safety",
+      "status": "PASS",
+      "severity": "HIGH",
+      "detail": "All mutating methods (`encrypt`, `decrypt`, `encrypt_to`, `decrypt_in_place`) require `&mut self`, so Rust's borrow checker statically prevents concurrent mutable access without a synchronisation primitive. The struct contains only `u64`, `u32`, `[u8; 32]` arrays, and `ReplayWindow`; assuming `ReplayWindow` is `Send`, the struct auto-derives `Send` correctly. No raw pointer tricks or interior mutability patterns that could escape the borrow checker are present."
+    }
+  ],
+  "suggestions": [
+    {
+      "description": "Add a redacting `Debug` impl for `TransportSession` to aid diagnostics without exposing key material.",
+      "before": "#[derive(Zeroize, ZeroizeOnDrop)]\npub struct TransportSession { ... }",
+      "after": "#[derive(Zeroize, ZeroizeOnDrop)]\npub struct TransportSession { ... }\n\nimpl core::fmt::Debug for TransportSession {\n    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {\n        f.debug_struct(\"TransportSession\")\n            .field(\"our_index\", &self.our_index)\n            .field(\"their_index\", &self.their_index)\n            .field(\"key_send\", &\"[REDACTED]\")\n            .field(\"key_recv\", &\"[REDACTED]\")\n            .field(\"send_counter\", &self.send_counter)\n            .finish()\n    }\n}"
+    },
+    {
+      "description": "Add `///` doc comments to the two undocumented public items: `new` and `send_counter`.",
+      "before": "pub fn new(\n    our_index: u32,\n    their_index: u32,\n    key_send: [u8; 32],\n    key_recv: [u8; 32],\n) -> Self {",
+      "after": "/// Creates a new `TransportSession` from the keys and index pair\n/// produced by a completed handshake.\npub fn new(\n    our_index: u32,\n    their_index: u32,\n    key_send: [u8; 32],\n    key_recv: [u8; 32],\n) -> Self {"
+    },
+    {
+      "description": "Document `send_counter` to clarify its semantics (next nonce value, not packets sent).",
+      "before": "pub fn send_counter(&self) -> u64 {\n    self.send_counter\n}",
+      "after": "/// Returns the next outgoing nonce counter value.\n/// When this reaches `u64::MAX` the session must be rekeyed.\npub fn send_counter(&self) -> u64 {\n    self.send_counter\n}"
+    }
+  ]
+}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.1250 | **Duration:** 60.9s
+
+
+---
+
+# Axis: documentation
+
+## User
+
+## File: `rustguard-core/src/session.rs`
+## Language: rust
+
+```rust
+use alloc::vec::Vec;
+use rustguard_crypto::{self as crypto};
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+use crate::replay::ReplayWindow;
+
+/// A transport session derived from a completed handshake.
+///
+/// Each side gets a sending key and a receiving key.
+/// The initiator sends with key_send and receives with key_recv.
+/// The responder has these reversed.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct TransportSession {
+    /// Our sender index (the other side uses this as receiver_index).
+    #[zeroize(skip)]
+    pub our_index: u32,
+    /// Their sender index (we use this as receiver_index in incoming packets).
+    #[zeroize(skip)]
+    pub their_index: u32,
+    /// Key for encrypting outgoing packets.
+    key_send: [u8; 32],
+    /// Key for decrypting incoming packets.
+    key_recv: [u8; 32],
+    /// Outgoing nonce counter.
+    #[zeroize(skip)]
+    send_counter: u64,
+    /// Anti-replay window for incoming packets.
+    #[zeroize(skip)]
+    recv_window: ReplayWindow,
+}
+
+impl TransportSession {
+    pub fn new(
+        our_index: u32,
+        their_index: u32,
+        key_send: [u8; 32],
+        key_recv: [u8; 32],
+    ) -> Self {
+        Self {
+            our_index,
+            their_index,
+            key_send,
+            key_recv,
+            send_counter: 0,
+            recv_window: ReplayWindow::new(),
+        }
+    }
+
+    /// Encrypt a plaintext packet for transport.
+    /// Returns None if the nonce counter has been exhausted (rekey required).
+    pub fn encrypt(&mut self, plaintext: &[u8]) -> Option<(u64, Vec<u8>)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ciphertext = crypto::seal(&self.key_send, counter, &[], plaintext);
+        Some((counter, ciphertext))
+    }
+
+    /// Decrypt an incoming transport packet.
+    /// Checks the anti-replay window before decrypting.
+    /// Only marks the counter as seen after AEAD succeeds.
+    /// Returns None if replay detected or decryption fails.
+    pub fn decrypt(&mut self, counter: u64, ciphertext: &[u8]) -> Option<Vec<u8>> {
+        // Check replay window first — cheap before expensive AEAD.
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        // Attempt decryption. Only update replay window on success
+        // to prevent an attacker from poisoning the window with garbage.
+        let plaintext = crypto::open(&self.key_recv, counter, &[], ciphertext)?;
+        self.recv_window.update(counter);
+        Some(plaintext)
+    }
+
+    /// Zero-alloc encrypt: writes ciphertext into `out` buffer.
+    /// Returns (counter, ciphertext_len) or None if nonce exhausted.
+    /// `out` must be at least `plaintext.len() + 16` bytes.
+    pub fn encrypt_to(&mut self, plaintext: &[u8], out: &mut [u8]) -> Option<(u64, usize)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ct_len = crypto::seal_to(&self.key_send, counter, plaintext, out);
+        Some((counter, ct_len))
+    }
+
+    /// Zero-alloc decrypt: decrypts in place within `buf`.
+    /// `buf[..ct_len]` contains ciphertext+tag on input, plaintext on output.
+    /// Returns plaintext length or None.
+    pub fn decrypt_in_place(&mut self, counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        let pt_len = crypto::open_to(&self.key_recv, counter, buf, ct_len)?;
+        self.recv_window.update(counter);
+        Some(pt_len)
+    }
+
+    pub fn send_counter(&self) -> u64 {
+        self.send_counter
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_session_pair() -> (TransportSession, TransportSession) {
+        let key_a = [0x11u8; 32];
+        let key_b = [0x22u8; 32];
+
+        let initiator = TransportSession::new(1, 2, key_a, key_b);
+        let responder = TransportSession::new(2, 1, key_b, key_a);
+        (initiator, responder)
+    }
+
+    #[test]
+    fn encrypt_decrypt_roundtrip() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let plaintext = b"ping from the trenches";
+
+        let (counter, ciphertext) = initiator.encrypt(plaintext).unwrap();
+        assert_eq!(ciphertext.len(), plaintext.len() + crypto::AEAD_TAG_LEN);
+
+        let decrypted = responder.decrypt(counter, &ciphertext).unwrap();
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn counter_increments() {
+        let (mut initiator, _) = make_session_pair();
+        assert_eq!(initiator.send_counter(), 0);
+        initiator.encrypt(b"one").unwrap();
+        assert_eq!(initiator.send_counter(), 1);
+        initiator.encrypt(b"two").unwrap();
+        assert_eq!(initiator.send_counter(), 2);
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter + 1, &ciphertext).is_none());
+    }
+
+    #[test]
+    fn replay_rejected() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter, &ciphertext).is_some());
+        assert!(
+            responder.decrypt(counter, &ciphertext).is_none(),
+            "replayed packet must be rejected"
+        );
+    }
+
+    #[test]
+    fn out_of_order_accepted() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c0, ct0) = initiator.encrypt(b"zero").unwrap();
+        let (c1, ct1) = initiator.encrypt(b"one").unwrap();
+        let (c2, ct2) = initiator.encrypt(b"two").unwrap();
+
+        // Deliver out of order: 2, 0, 1.
+        assert_eq!(responder.decrypt(c2, &ct2).unwrap(), b"two");
+        assert_eq!(responder.decrypt(c0, &ct0).unwrap(), b"zero");
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"one");
+    }
+
+    #[test]
+    fn bidirectional() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c1, ct1) = initiator.encrypt(b"hello").unwrap();
+        let (c2, ct2) = responder.encrypt(b"world").unwrap();
+
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"hello");
+        assert_eq!(initiator.decrypt(c2, &ct2).unwrap(), b"world");
+    }
+}
+
+```
+
+## Symbols to evaluate
+
+- export class TransportSession (L13–L30)
+
+## Documentation Directory
+
+No /docs/ directory found — evaluate JSDoc only, skip concept coverage.
+
+Evaluate documentation for each symbol and output the JSON.
+
+## System (init)
+
+**Model:** claude-sonnet-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+{
+  "symbols": [
+    {
+      "name": "TransportSession",
+      "line_start": 13,
+      "line_end": 30,
+      "documentation": "DOCUMENTED",
+      "confidence": 90,
+      "detail": "The struct carries a meaningful type-level `///` block (lines 7–11) that explains its purpose, derivation from a completed handshake, and the initiator/responder key-role convention. Both public fields (`our_index`, `their_index`) have individual `///` comments describing their semantics in the context of the WireGuard index scheme. All private fields also carry `///` comments, which is above the minimum bar. No `# Examples` section is present, but the Rust doc-comment convention only requires that on public functions and methods, not on struct declarations, so this omission does not reduce the rating below DOCUMENTED."
+    }
+  ],
+  "docs_coverage": {
+    "concepts": [],
+    "score_pct": 90
+  }
+}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0709 | **Duration:** 30.3s
+
+
+---
+
+# Deliberation Pass
+
+## User
+
+## Merged ReviewFile (from 7 axis evaluators)
+
+```json
+{
+  "version": 2,
+  "file": "rustguard-core/src/session.rs",
+  "is_generated": false,
+  "language": "rust",
+  "parse_method": "ast",
+  "verdict": "NEEDS_REFACTOR",
+  "symbols": [
+    {
+      "name": "TransportSession",
+      "kind": "class",
+      "exported": true,
+      "line_start": 13,
+      "line_end": 30,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "DEAD",
+      "duplication": "UNIQUE",
+      "tests": "NONE",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 88,
+      "detail": "[DEAD] Exported struct with 0 runtime importers and 0 type-only importers across all files. Pre-computed analysis confirms no external modules import this symbol. | [UNIQUE] No RAG similarity data available; no matching duplicates detected in codebase for this cryptographic transport session struct. | [OK] The struct definition is correct. Fields are properly typed: keys are [u8; 32], counters are u64, and the replay window is a dedicated type. Zeroize/ZeroizeOnDrop are correctly applied to the key fields while index and counter fields are skipped (acceptable — they contain no secret material). No logic errors, type mismatches, or unsafe operations are present in the struct definition itself. | [LEAN] The struct holds exactly the fields mandated by WireGuard-style transport: two session indices for packet routing, a send key, a receive key, an outgoing nonce counter, and an anti-replay window. Nothing extraneous. The selective `#[zeroize(skip)]` annotations are correctly applied only to non-secret fields (indices, counter, replay window), showing disciplined, purposeful use of the derive macros rather than cargo-cult application. No unnecessary generics, no abstraction layers, no configuration indirection — just the minimal state a bidirectional AEAD transport session requires. | [WEAK] Inline #[cfg(test)] module provides solid coverage of the core API: encrypt/decrypt roundtrip, counter monotonicity, wrong-counter rejection, anti-replay window, out-of-order delivery, and bidirectional use. However, the two zero-alloc variants — encrypt_to and decrypt_in_place — have zero test coverage despite being public API surface. Nonce exhaustion (send_counter wrapping via checked_add returning None) is also untested. Empty plaintext and truncated/corrupted ciphertext edge cases are absent. The missing coverage of encrypt_to/decrypt_in_place is the most significant gap since those paths exercise a separate code branch (crypto::seal_to / crypto::open_to) that could silently misbehave. | [DOCUMENTED] The struct carries a meaningful type-level `///` block (lines 7–11) that explains its purpose, derivation from a completed handshake, and the initiator/responder key-role convention. Both public fields (`our_index`, `their_index`) have individual `///` comments describing their semantics in the context of the WireGuard index scheme. All private fields also carry `///` comments, which is above the minimum bar. No `# Examples` section is present, but the Rust doc-comment convention only requires that on public functions and methods, not on struct declarations, so this omission does not reduce the rating below DOCUMENTED."
+    }
+  ],
+  "actions": [
+    {
+      "id": 1,
+      "description": "Remove dead code: `TransportSession` is exported but unused",
+      "severity": "high",
+      "effort": "trivial",
+      "category": "quickwin",
+      "source": "utility",
+      "target_symbol": "TransportSession",
+      "target_lines": "L13-L30"
+    },
+    {
+      "id": 2,
+      "description": "Add JSDoc documentation for exported symbol: `TransportSession`",
+      "severity": "medium",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "TransportSession",
+      "target_lines": "L13-L30"
+    }
+  ],
+  "file_level": {
+    "unused_imports": [],
+    "circular_dependencies": [],
+    "general_notes": "Best practices score: 9/10 (0 FAIL, 2 WARN, 10 PASS)"
+  },
+  "best_practices": {
+    "score": 9,
+    "rules": [
+      {
+        "rule_id": 1,
+        "rule_name": "No unwrap in production code",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "All `.unwrap()` calls are confined to the `#[cfg(test)]` module. Production methods (`encrypt`, `decrypt`, `encrypt_to`, `decrypt_in_place`) return `Option<T>` and propagate failure cleanly via `?` or early `None` returns. Rule 1 is always PASS for test modules per policy.",
+        "lines": "L107-L178"
+      },
+      {
+        "rule_id": 2,
+        "rule_name": "No unsafe blocks without justification",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No `unsafe` blocks appear anywhere in the file."
+      },
+      {
+        "rule_id": 3,
+        "rule_name": "Proper error handling with Result/Option",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "`checked_add(1)?` guards the nonce counter against overflow; `crypto::open` is chained with `?` so a failed AEAD tag never produces a plaintext value silently. The replay-window update is correctly deferred until after successful decryption, preventing window-poisoning attacks. No silent ignores found."
+      },
+      {
+        "rule_id": 4,
+        "rule_name": "Derive common traits on public types",
+        "status": "WARN",
+        "severity": "MEDIUM",
+        "detail": "`TransportSession` is a public struct that derives only `Zeroize` and `ZeroizeOnDrop`. `Debug`, `Clone`, and `PartialEq` are absent. Omitting `Clone` and `PartialEq` is defensible for a stateful cryptographic session — cloning would duplicate mutable counters and replay windows with shared state semantics. However, a custom `Debug` impl that redacts key material (printing `[REDACTED]` for `key_send`/`key_recv`) would aid debuggability without leaking secrets.",
+        "lines": "L11-L12"
+      },
+      {
+        "rule_id": 5,
+        "rule_name": "Lifetime annotations explicit where needed",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "All method signatures use simple single-reference parameters (`&[u8]`, `&mut [u8]`). Lifetime elision is unambiguous in every case; explicit annotations would add noise without clarity."
+      },
+      {
+        "rule_id": 6,
+        "rule_name": "Clippy idioms",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "No unnecessary `clone()` calls, no manual loops where iterator chains would be cleaner, and counter arithmetic uses `checked_add` rather than a bare `+` — all idiomatic Rust."
+      },
+      {
+        "rule_id": 7,
+        "rule_name": "No panic! in library/production code",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No `panic!`, `todo!`, `unreachable!`, or `unimplemented!` macros appear in production paths. Test assertions use standard `assert_eq!`/`assert!` which is acceptable per policy."
+      },
+      {
+        "rule_id": 8,
+        "rule_name": "Module organization",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "`session.rs` sits correctly alongside `replay.rs`, `handshake.rs`, and `messages.rs` inside `rustguard-core/src/`, consistent with the project's flat-module layout for the core crate. Internal use of `crate::replay::ReplayWindow` follows the established intra-crate path convention."
+      },
+      {
+        "rule_id": 9,
+        "rule_name": "Documentation comments on public items",
+        "status": "WARN",
+        "severity": "MEDIUM",
+        "detail": "The struct and four of its methods carry `///` doc comments. However, `TransportSession::new` and `TransportSession::send_counter` are both `pub` and lack doc comments entirely.",
+        "lines": "L35-L46, L93-L95"
+      },
+      {
+        "rule_id": 10,
+        "rule_name": "No hardcoded secrets or credentials",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "The only literal key bytes (`[0x11u8; 32]`, `[0x22u8; 32]`) appear exclusively inside `#[cfg(test)]` and are clearly synthetic test vectors with no production relevance."
+      },
+      {
+        "rule_id": 11,
+        "rule_name": "Memory safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "`#[derive(Zeroize, ZeroizeOnDrop)]` ensures `key_send` and `key_recv` are overwritten with zeros when the session is dropped, preventing key material from lingering in heap/stack memory. No `mem::forget`, `Box::leak`, or manual `Drop` anti-patterns are present."
+      },
+      {
+        "rule_id": 12,
+        "rule_name": "Concurrency safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "All mutating methods (`encrypt`, `decrypt`, `encrypt_to`, `decrypt_in_place`) require `&mut self`, so Rust's borrow checker statically prevents concurrent mutable access without a synchronisation primitive. The struct contains only `u64`, `u32`, `[u8; 32]` arrays, and `ReplayWindow`; assuming `ReplayWindow` is `Send`, the struct auto-derives `Send` correctly. No raw pointer tricks or interior mutability patterns that could escape the borrow checker are present."
+      }
+    ],
+    "suggestions": [
+      {
+        "description": "Add a redacting `Debug` impl for `TransportSession` to aid diagnostics without exposing key material.",
+        "before": "#[derive(Zeroize, ZeroizeOnDrop)]\npub struct TransportSession { ... }",
+        "after": "#[derive(Zeroize, ZeroizeOnDrop)]\npub struct TransportSession { ... }\n\nimpl core::fmt::Debug for TransportSession {\n    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {\n        f.debug_struct(\"TransportSession\")\n            .field(\"our_index\", &self.our_index)\n            .field(\"their_index\", &self.their_index)\n            .field(\"key_send\", &\"[REDACTED]\")\n            .field(\"key_recv\", &\"[REDACTED]\")\n            .field(\"send_counter\", &self.send_counter)\n            .finish()\n    }\n}"
+      },
+      {
+        "description": "Add `///` doc comments to the two undocumented public items: `new` and `send_counter`.",
+        "before": "pub fn new(\n    our_index: u32,\n    their_index: u32,\n    key_send: [u8; 32],\n    key_recv: [u8; 32],\n) -> Self {",
+        "after": "/// Creates a new `TransportSession` from the keys and index pair\n/// produced by a completed handshake.\npub fn new(\n    our_index: u32,\n    their_index: u32,\n    key_send: [u8; 32],\n    key_recv: [u8; 32],\n) -> Self {"
+      },
+      {
+        "description": "Document `send_counter` to clarify its semantics (next nonce value, not packets sent).",
+        "before": "pub fn send_counter(&self) -> u64 {\n    self.send_counter\n}",
+        "after": "/// Returns the next outgoing nonce counter value.\n/// When this reaches `u64::MAX` the session must be rekeyed.\npub fn send_counter(&self) -> u64 {\n    self.send_counter\n}"
+      }
+    ]
+  },
+  "docs_coverage": {
+    "concepts": [],
+    "score_pct": 90
+  },
+  "axis_meta": {
+    "utility": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.01785205,
+      "duration_ms": 18437
+    },
+    "duplication": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.01476685,
+      "duration_ms": 16114
+    },
+    "correction": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.03104625,
+      "duration_ms": 5194
+    },
+    "overengineering": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.06741925,
+      "duration_ms": 25697
+    },
+    "tests": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.0579885,
+      "duration_ms": 20486
+    },
+    "best_practices": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.12498375,
+      "duration_ms": 60897
+    },
+    "documentation": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.0709375,
+      "duration_ms": 30308
+    }
+  }
+}
+```
+
+## Source code of `rustguard-core/src/session.rs`
+
+```typescript
+use alloc::vec::Vec;
+use rustguard_crypto::{self as crypto};
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+use crate::replay::ReplayWindow;
+
+/// A transport session derived from a completed handshake.
+///
+/// Each side gets a sending key and a receiving key.
+/// The initiator sends with key_send and receives with key_recv.
+/// The responder has these reversed.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct TransportSession {
+    /// Our sender index (the other side uses this as receiver_index).
+    #[zeroize(skip)]
+    pub our_index: u32,
+    /// Their sender index (we use this as receiver_index in incoming packets).
+    #[zeroize(skip)]
+    pub their_index: u32,
+    /// Key for encrypting outgoing packets.
+    key_send: [u8; 32],
+    /// Key for decrypting incoming packets.
+    key_recv: [u8; 32],
+    /// Outgoing nonce counter.
+    #[zeroize(skip)]
+    send_counter: u64,
+    /// Anti-replay window for incoming packets.
+    #[zeroize(skip)]
+    recv_window: ReplayWindow,
+}
+
+impl TransportSession {
+    pub fn new(
+        our_index: u32,
+        their_index: u32,
+        key_send: [u8; 32],
+        key_recv: [u8; 32],
+    ) -> Self {
+        Self {
+            our_index,
+            their_index,
+            key_send,
+            key_recv,
+            send_counter: 0,
+            recv_window: ReplayWindow::new(),
+        }
+    }
+
+    /// Encrypt a plaintext packet for transport.
+    /// Returns None if the nonce counter has been exhausted (rekey required).
+    pub fn encrypt(&mut self, plaintext: &[u8]) -> Option<(u64, Vec<u8>)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ciphertext = crypto::seal(&self.key_send, counter, &[], plaintext);
+        Some((counter, ciphertext))
+    }
+
+    /// Decrypt an incoming transport packet.
+    /// Checks the anti-replay window before decrypting.
+    /// Only marks the counter as seen after AEAD succeeds.
+    /// Returns None if replay detected or decryption fails.
+    pub fn decrypt(&mut self, counter: u64, ciphertext: &[u8]) -> Option<Vec<u8>> {
+        // Check replay window first — cheap before expensive AEAD.
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        // Attempt decryption. Only update replay window on success
+        // to prevent an attacker from poisoning the window with garbage.
+        let plaintext = crypto::open(&self.key_recv, counter, &[], ciphertext)?;
+        self.recv_window.update(counter);
+        Some(plaintext)
+    }
+
+    /// Zero-alloc encrypt: writes ciphertext into `out` buffer.
+    /// Returns (counter, ciphertext_len) or None if nonce exhausted.
+    /// `out` must be at least `plaintext.len() + 16` bytes.
+    pub fn encrypt_to(&mut self, plaintext: &[u8], out: &mut [u8]) -> Option<(u64, usize)> {
+        let counter = self.send_counter;
+        self.send_counter = self.send_counter.checked_add(1)?;
+        let ct_len = crypto::seal_to(&self.key_send, counter, plaintext, out);
+        Some((counter, ct_len))
+    }
+
+    /// Zero-alloc decrypt: decrypts in place within `buf`.
+    /// `buf[..ct_len]` contains ciphertext+tag on input, plaintext on output.
+    /// Returns plaintext length or None.
+    pub fn decrypt_in_place(&mut self, counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
+        if !self.recv_window.check(counter) {
+            return None;
+        }
+        let pt_len = crypto::open_to(&self.key_recv, counter, buf, ct_len)?;
+        self.recv_window.update(counter);
+        Some(pt_len)
+    }
+
+    pub fn send_counter(&self) -> u64 {
+        self.send_counter
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_session_pair() -> (TransportSession, TransportSession) {
+        let key_a = [0x11u8; 32];
+        let key_b = [0x22u8; 32];
+
+        let initiator = TransportSession::new(1, 2, key_a, key_b);
+        let responder = TransportSession::new(2, 1, key_b, key_a);
+        (initiator, responder)
+    }
+
+    #[test]
+    fn encrypt_decrypt_roundtrip() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let plaintext = b"ping from the trenches";
+
+        let (counter, ciphertext) = initiator.encrypt(plaintext).unwrap();
+        assert_eq!(ciphertext.len(), plaintext.len() + crypto::AEAD_TAG_LEN);
+
+        let decrypted = responder.decrypt(counter, &ciphertext).unwrap();
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn counter_increments() {
+        let (mut initiator, _) = make_session_pair();
+        assert_eq!(initiator.send_counter(), 0);
+        initiator.encrypt(b"one").unwrap();
+        assert_eq!(initiator.send_counter(), 1);
+        initiator.encrypt(b"two").unwrap();
+        assert_eq!(initiator.send_counter(), 2);
+    }
+
+    #[test]
+    fn wrong_counter_fails() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter + 1, &ciphertext).is_none());
+    }
+
+    #[test]
+    fn replay_rejected() {
+        let (mut initiator, mut responder) = make_session_pair();
+        let (counter, ciphertext) = initiator.encrypt(b"data").unwrap();
+        assert!(responder.decrypt(counter, &ciphertext).is_some());
+        assert!(
+            responder.decrypt(counter, &ciphertext).is_none(),
+            "replayed packet must be rejected"
+        );
+    }
+
+    #[test]
+    fn out_of_order_accepted() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c0, ct0) = initiator.encrypt(b"zero").unwrap();
+        let (c1, ct1) = initiator.encrypt(b"one").unwrap();
+        let (c2, ct2) = initiator.encrypt(b"two").unwrap();
+
+        // Deliver out of order: 2, 0, 1.
+        assert_eq!(responder.decrypt(c2, &ct2).unwrap(), b"two");
+        assert_eq!(responder.decrypt(c0, &ct0).unwrap(), b"zero");
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"one");
+    }
+
+    #[test]
+    fn bidirectional() {
+        let (mut initiator, mut responder) = make_session_pair();
+
+        let (c1, ct1) = initiator.encrypt(b"hello").unwrap();
+        let (c2, ct2) = responder.encrypt(b"world").unwrap();
+
+        assert_eq!(responder.decrypt(c1, &ct1).unwrap(), b"hello");
+        assert_eq!(initiator.decrypt(c2, &ct2).unwrap(), b"world");
+    }
+}
+
+```
+
+## Instructions
+
+Deliberate ONLY symbols with findings — skip clean symbols. For each symbol, address ALL its axis findings together in one entry (e.g., if a symbol is DEAD + NEEDS_FIX, deliberate both in the same entry). Recompute the verdict.
+
+Rules:
+- Only include axes with findings in original/deliberated (omit clean axes)
+- Do NOT add new findings, symbols, or actions
+- Protect ERROR (require ≥ 95 confidence to downgrade)
+- Reclassification requires confidence ≥ 85
+- Copy original values when you agree with the finding
+
+## System (init)
+
+**Model:** claude-opus-4-6
+**Mode:** axis evaluator (single-turn, no tools)
+
+## Assistant
+
+
+
+## Assistant
+
+{"verdict":"NEEDS_REFACTOR","symbols":[{"name":"TransportSession","original":{"utility":"DEAD","tests":"NONE","documentation":"UNDOCUMENTED","confidence":88},"deliberated":{"utility":"USED","tests":"WEAK","documentation":"DOCUMENTED","confidence":90},"reasoning":"UTILITY DEAD→USED: This is a `pub struct` in a `-core` library crate (`rustguard-core`). Library crate public types are consumed by downstream crates in the workspace (e.g., `rustguard`). The utility evaluator likely only searched within the same crate and missed cross-crate imports, a classic false positive for workspace library crates. Reclassified to USED. TESTS NONE→WEAK: The merged field says NONE but the detail text itself says WEAK, and the source clearly contains 6 test functions in a `#[cfg(test)]` module covering encrypt/decrypt roundtrip, counter monotonicity, wrong-counter rejection, replay rejection, out-of-order delivery, and bidirectional use. The WEAK assessment is accurate: `encrypt_to` and `decrypt_in_place` (separate code paths using `seal_to`/`open_to`) have zero coverage, and nonce exhaustion / edge cases are untested. DOCUMENTATION UNDOCUMENTED→DOCUMENTED: The detail text itself concludes DOCUMENTED. The struct has a thorough `///` block (lines 7–11) explaining purpose, derivation, and key-role convention. Both public fields and all private fields carry `///` comments. Four of six methods have doc comments. Two public items (`new`, `send_counter`) lack doc comments (noted in best_practices rule 9), but the overall coverage is well above UNDOCUMENTED. The struct-level and field-level documentation is comprehensive."}],"removed_actions":[1,2],"reasoning":"The primary reclassification is DEAD→USED: `TransportSession` is a public struct in a library crate (`rustguard-core`) clearly designed for consumption by other crates in the workspace. Flagging it as dead code is a false positive from intra-crate-only import analysis. Action 1 (remove dead code) is removed accordingly. Documentation was incorrectly marked UNDOCUMENTED despite the detail text confirming DOCUMENTED status and thorough `///` comments on the struct, fields, and most methods. Action 2 (add JSDoc — wrong terminology for Rust) is removed since the symbol is documented; the minor gap of two undocumented public methods is captured in best_practices suggestions. Tests were marked NONE but the file contains 6 substantive tests; reclassified to WEAK due to missing coverage of `encrypt_to`, `decrypt_in_place`, and nonce exhaustion edge cases. This is the remaining legitimate finding. Verdict stays NEEDS_REFACTOR based on the WEAK test coverage of public API surface."}
+
+## rate_limit_event
+
+## Result (success)
+
+**Cost:** $0.0993 | **Duration:** 44.7s
+

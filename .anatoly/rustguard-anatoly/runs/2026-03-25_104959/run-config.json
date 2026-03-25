@@ -1,0 +1,75 @@
+{
+  "runId": "2026-03-25_104959",
+  "timestamp": "2026-03-25T09:49:59.294Z",
+  "projectRoot": "/home/rviau/projects/rustguard",
+  "concurrency": 4,
+  "ragMode": "auto",
+  "enableRag": true,
+  "noCache": false,
+  "deliberation": true,
+  "dryRun": false,
+  "axesFilter": null,
+  "fileFilter": null,
+  "badge": {
+    "enabled": true,
+    "verdict": false,
+    "link": "https://github.com/r-via/anatoly"
+  },
+  "config": {
+    "llm": {
+      "model": "claude-sonnet-4-6",
+      "index_model": "claude-haiku-4-5-20251001",
+      "agentic_tools": true,
+      "timeout_per_file": 600,
+      "max_retries": 3,
+      "concurrency": 4,
+      "sdk_concurrency": 24,
+      "min_confidence": 70,
+      "max_stop_iterations": 3,
+      "deliberation": true,
+      "deliberation_model": "claude-opus-4-6",
+      "axes": {
+        "utility": {
+          "enabled": true
+        },
+        "duplication": {
+          "enabled": true
+        },
+        "correction": {
+          "enabled": true
+        },
+        "overengineering": {
+          "enabled": true
+        },
+        "tests": {
+          "enabled": true
+        },
+        "best_practices": {
+          "enabled": true
+        },
+        "documentation": {
+          "enabled": true
+        }
+      }
+    },
+    "rag": {
+      "enabled": true,
+      "code_model": "auto",
+      "nlp_model": "auto",
+      "code_weight": 0.6
+    },
+    "scan": {
+      "include": [
+        "src/**/*.ts",
+        "src/**/*.tsx"
+      ],
+      "exclude": [
+        "node_modules/**",
+        "dist/**",
+        "**/*.test.ts",
+        "**/*.spec.ts"
+      ],
+      "auto_detect": true
+    }
+  }
+}

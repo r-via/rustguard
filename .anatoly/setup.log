@@ -1,0 +1,32 @@
+[2026-03-25T09:49:28.244Z] [info ] ═══════════════════════════════════════════════
+[2026-03-25T09:49:28.246Z] [info ]   Anatoly — Embedding Setup
+[2026-03-25T09:49:28.249Z] [info ] ═══════════════════════════════════════════════
+[2026-03-25T09:49:28.251Z] [info ] Checking prerequisites...
+[2026-03-25T09:49:28.410Z] [ ok  ] GPU detected: cuda (23 GB VRAM)
+[2026-03-25T09:49:28.933Z] [ ok  ] Docker: available
+[2026-03-25T09:49:28.935Z] [ ok  ] NVIDIA Container Toolkit: available
+[2026-03-25T09:49:28.939Z] [info ] Selected tier: advanced-gguf
+[2026-03-25T09:49:28.942Z] [info ] Downloading GGUF models...
+[2026-03-25T09:49:28.944Z] [info ] Verifying integrity: nomic-embed-code.Q5_K_M.gguf...
+[2026-03-25T09:49:32.530Z] [ ok  ] GGUF model verified: nomic-embed-code.Q5_K_M.gguf (4836 MB)
+[2026-03-25T09:49:32.532Z] [info ] Verifying integrity: Qwen3-Embedding-8B-Q5_K_M.gguf...
+[2026-03-25T09:49:39.409Z] [ ok  ] GGUF model verified: Qwen3-Embedding-8B-Q5_K_M.gguf (5172 MB)
+[2026-03-25T09:49:39.411Z] [info ] Pulling Docker images...
+[2026-03-25T09:49:39.448Z] [ ok  ] GGUF Docker image already present — skipping pull
+[2026-03-25T09:49:39.450Z] [info ] Testing GGUF containers...
+[2026-03-25T09:49:44.584Z] [ ok  ] GGUF code embedding OK (3584d)
+[2026-03-25T09:49:47.315Z] [ ok  ] Config written to /home/rviau/projects/rustguard/.anatoly/embeddings-ready.json
+[2026-03-25T09:49:47.317Z] [info ] ═══════════════════════════════════════════════
+[2026-03-25T09:49:47.319Z] [info ]   Setup complete!
+[2026-03-25T09:49:47.321Z] [info ] ═══════════════════════════════════════════════
+[2026-03-25T09:49:47.324Z] [info ] Backend:    advanced-gguf
+[2026-03-25T09:49:47.327Z] [info ] Device:     cuda (23 GB VRAM)
+[2026-03-25T09:49:47.329Z] [info ] Code model: nomic-ai/nomic-embed-code (3584d)
+[2026-03-25T09:49:47.332Z] [info ] NLP model:  Qwen/Qwen3-Embedding-8B (4096d)
+[2026-03-25T09:49:47.335Z] [info ] GGUF code:  nomic-embed-code.Q5_K_M.gguf
+[2026-03-25T09:49:47.338Z] [info ] GGUF NLP:   Qwen3-Embedding-8B-Q5_K_M.gguf
+[2026-03-25T09:49:47.340Z] [info ] Docker:     ghcr.io/ggml-org/llama.cpp:server-cuda
+[2026-03-25T09:49:47.343Z] [info ] Config:     .anatoly/embeddings-ready.json
+[2026-03-25T09:49:47.346Z] [info ] Both GGUF models load simultaneously (~10 GB VRAM). No swap needed.
+[2026-03-25T09:49:47.348Z] [info ] Containers start automatically with 'npx anatoly run'.
+[2026-03-25T09:49:47.351Z] [info ] To check status: npx anatoly setup-embeddings --check

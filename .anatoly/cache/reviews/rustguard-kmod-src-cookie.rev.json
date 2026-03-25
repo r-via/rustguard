@@ -1,0 +1,430 @@
+{
+  "version": 2,
+  "file": "rustguard-kmod/src/cookie.rs",
+  "is_generated": false,
+  "language": "rust",
+  "parse_method": "ast",
+  "verdict": "NEEDS_REFACTOR",
+  "symbols": [
+    {
+      "name": "COOKIE_SECRET_LIFETIME_NS",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 14,
+      "line_end": 14,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "GOOD",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 60,
+      "detail": "[USED] Constant used in is_fresh (L107) and maybe_rotate_secret (L91) for timing comparisons on secret rotation. | [UNIQUE] No similar constants found in RAG results. Protocol-specific timeout constant (120 seconds in nanoseconds). | [OK] 120 seconds expressed in nanoseconds matches the WireGuard RFC specification for cookie lifetime. | [LEAN] Simple named constant encoding the 120-second lifetime in nanoseconds. Inline arithmetic (120 * 1_000_000_000) is clear and self-documenting — no abstraction needed. | [GOOD] Pure compile-time constant with no runtime behavior. Per rule 6, constants require no dedicated tests; value is indirectly exercised through any secret-rotation logic. | [UNDOCUMENTED] Private constant with no /// doc comment. Name is moderately self-descriptive (lifetime in nanoseconds = 120 s). Tolerated under leniency rules for private items. (deliberated: confirmed — UNDOCUMENTED is technically correct — no individual doc comment exists. However, the module-level doc block (L3-L12) explains the cookie mechanism, and the constant name encodes its semantics (cookie secret, lifetime, nanoseconds). Low priority under private-item leniency.)"
+    },
+    {
+      "name": "COOKIE_LEN",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 15,
+      "line_end": 15,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "GOOD",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 60,
+      "detail": "[USED] Constant used in make_cookie array initialization (L89), encrypt call (L113), and compute_mac2 (L177-178). | [UNIQUE] No similar constants found. Cookie size constant specific to the mechanism (16 bytes). | [OK] 16-byte cookie size is correct per WireGuard specification. | [LEAN] Minimal constant for the 16-byte cookie length, used throughout the module. Appropriate named constant with no unnecessary complexity. | [GOOD] Pure compile-time constant with no runtime behavior. Per rule 6, no dedicated tests needed; its value is implicitly validated by any cookie roundtrip. | [UNDOCUMENTED] Private constant with no /// doc comment. Name is self-descriptive. Tolerated under leniency rules for private items. (deliberated: confirmed — UNDOCUMENTED is technically correct — no doc comment. Name is fully self-descriptive (cookie length = 16). Module-level docs provide protocol context. Tolerated under private-item leniency.)"
+    },
+    {
+      "name": "LABEL_COOKIE",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 16,
+      "line_end": 16,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "GOOD",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 60,
+      "detail": "[USED] Label used in hash() calls for cookie key derivation in create_reply (L131) and process_reply (L158). | [UNIQUE] No RAG results for this constant. Protocol label constants are not typically consolidated across modules. | [OK] b\"cookie--\" is the correct 8-byte label per the WireGuard protocol specification. | [LEAN] Direct byte-string label constant matching the WireGuard spec. No abstraction warranted for a static protocol label. | [GOOD] Pure compile-time byte-string constant with no runtime behavior. Per rule 6, no dedicated test required. | [UNDOCUMENTED] Private constant with no /// doc comment. Value b\"cookie--\" is a WireGuard protocol domain label. Tolerated under leniency rules for private items. (deliberated: confirmed — UNDOCUMENTED is technically correct. The value b\"cookie--\" is a WireGuard domain-separation label visible in the literal. Private constant with clear naming; tolerated under leniency.)"
+    },
+    {
+      "name": "LABEL_MAC1",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 17,
+      "line_end": 17,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "GOOD",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 60,
+      "detail": "[USED] Label used in hash() call for MAC1 key derivation in verify_mac1 (L119). | [UNIQUE] Similar protocol label exists in noise.rs. However, these WireGuard protocol labels are independently used in different modules. | [OK] b\"mac1----\" is the correct 8-byte label per the WireGuard protocol specification. | [LEAN] Direct byte-string label constant matching the WireGuard spec. Same reasoning as LABEL_COOKIE — minimal and correct. | [GOOD] Pure compile-time byte-string constant with no runtime behavior. Per rule 6, no dedicated test required. | [UNDOCUMENTED] Private constant with no /// doc comment. Value b\"mac1----\" is a WireGuard protocol domain label. Tolerated under leniency rules for private items. (deliberated: confirmed — UNDOCUMENTED is technically correct. Same reasoning as LABEL_COOKIE — WireGuard protocol label b\"mac1----\" with self-descriptive name.)"
+    },
+    {
+      "name": "hash",
+      "kind": "function",
+      "exported": false,
+      "line_start": 41,
+      "line_end": 51,
+      "correction": "NEEDS_FIX",
+      "overengineering": "ACCEPTABLE",
+      "utility": "USED",
+      "duplication": "DUPLICATE",
+      "tests": "NONE",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 75,
+      "detail": "[USED] Helper function called in verify_mac1 (L119), create_reply (L131), and process_reply (L158) for key derivation. | [DUPLICATE] RAG score 0.966 with near-identical implementation in noise.rs. Both hash variable-length chunk arrays via wg_blake2s_hash. Only difference is array capacity (4 vs 8). | [NEEDS_FIX] ptrs and lens arrays are fixed at size 4 and only populated for up to 4 chunks via .take(4), but chunks.len() is passed as num_chunks to the C function unconditionally. If chunks.len() > 4, the C function will read beyond the 4-element stack arrays, causing undefined behaviour (out-of-bounds memory read). The argument should be chunks.len().min(4) as u32. Currently only called with 2 chunks, so the bug is latent but the interface is incorrect. | [ACCEPTABLE] Handles up to 4 chunks via fixed-size arrays to interface with the C FFI. The cap at 4 chunks is a reasonable constraint given the call sites. Slightly awkward (silent truncation beyond 4 chunks) but justified by the no-alloc kernel-module context where dynamic dispatch is unavailable. | [NONE] No test file exists for rustguard-kmod/src/cookie.rs. There is no rustguard-kmod/tests/ directory in the project structure. This private helper has zero test coverage — no determinism checks, no multi-chunk behavior, no known-vector validation. | [UNDOCUMENTED] Private function with no /// doc comment. Wraps wg_blake2s_hash for multi-chunk hashing; chunk-count limit of 4 and 32-byte output are implicit. The known false positive for hash in rustguard-crypto does not apply here — that instance had a doc comment at its file's line 8, which this instance lacks. Tolerated under private-item leniency. (deliberated: confirmed — NEEDS_FIX confirmed: if chunks.len() > 4, the C function reads beyond the 4-element ptrs/lens arrays — genuine UB. Currently latent (only called with 2 chunks) but the interface is unsafe-by-contract without documenting the limit. Fix to chunks.len().min(4) is trivial and correct. DUPLICATE confirmed: 96% identical to noise.rs::hash within the same crate; extracting to a shared crypto_helpers module is feasible and warranted. NONE tests is factual — no test infrastructure exists for rustguard-kmod. ACCEPTABLE overengineering agreed — fixed-size array is a pragmatic no-alloc kernel constraint. UNDOCUMENTED agreed — private helper with no doc comment. Raising confidence to 75 as all findings are well-supported.)",
+      "duplicate_target": {
+        "file": "rustguard-kmod/src/noise.rs",
+        "symbol": "hash",
+        "similarity": "96% identical logic—both hash arbitrary chunks to [u8; 32] using wg_blake2s_hash, differ only in max chunk array size"
+      }
+    },
+    {
+      "name": "mac",
+      "kind": "function",
+      "exported": false,
+      "line_start": 53,
+      "line_end": 57,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "DUPLICATE",
+      "tests": "NONE",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 75,
+      "detail": "[USED] BLAKE2s MAC function called in make_cookie (L89), verify_mac1 (L120), verify_mac2 (L126), compute_mac2 (L181). | [DUPLICATE] RAG score 0.983 with identical function in noise.rs. Both perform BLAKE2s-256 MAC with same signature and wg_blake2s_256_mac call. | [OK] Correctly delegates to wg_blake2s_256_mac with proper pointer and length arguments. Output buffer is correctly sized at 32 bytes. | [LEAN] Thin, direct wrapper over the C BLAKE2s-MAC FFI. Does exactly one thing with no unnecessary indirection. | [NONE] No test file exists for rustguard-kmod/src/cookie.rs. The private keyed-MAC wrapper is entirely untested — no key-sensitivity checks, no known-vector validation, no empty-data edge case. | [UNDOCUMENTED] Private function with no /// doc comment. Wraps wg_blake2s_256_mac; key/data semantics and 32-byte output are undescribed. The known false positive for mac in rustguard-crypto does not apply here — that instance had a multi-line /// block, which is absent in this file. Tolerated under private-item leniency. (deliberated: confirmed — DUPLICATE confirmed: 100% identical to noise.rs::mac within the same crate. Both are trivial FFI wrappers and consolidation into a shared module is straightforward. NONE tests is factual. UNDOCUMENTED tolerated under private-item leniency. Raising confidence as the duplication is unambiguous.)",
+      "duplicate_target": {
+        "file": "rustguard-kmod/src/noise.rs",
+        "symbol": "mac",
+        "similarity": "100% identical—same signature and wg_blake2s_256_mac FFI call"
+      }
+    },
+    {
+      "name": "random_bytes",
+      "kind": "function",
+      "exported": false,
+      "line_start": 59,
+      "line_end": 63,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "DUPLICATE",
+      "tests": "NONE",
+      "documentation": "UNDOCUMENTED",
+      "confidence": 75,
+      "detail": "[USED] RNG function called in new (L82), maybe_rotate_secret (L87), and create_reply (L132) for nonce/secret generation. | [DUPLICATE] RAG score 0.971 with identical generic function in noise.rs. Both generate random [u8; N] arrays via wg_get_random_bytes. | [OK] Correctly fills a stack buffer of N bytes via wg_get_random_bytes and returns it. N as u32 cast is safe for any reasonable const generic value. | [LEAN] Const-generic wrapper over the kernel RNG FFI. The generic N avoids code duplication for different buffer sizes and is idiomatic Rust for no-std/no-alloc contexts. | [NONE] No test file found for this module. The generic const-sized random buffer wrapper is completely untested; no output-non-zero or uniqueness smoke tests exist. | [UNDOCUMENTED] Private generic function with no /// doc comment. Thin wrapper around wg_get_random_bytes using const-generic N. Tolerated under private-item leniency. (deliberated: confirmed — DUPLICATE confirmed: 99% identical to noise.rs::random_bytes, same const-generic signature and FFI call. Same-crate deduplication is practical. NONE tests and UNDOCUMENTED are factual and tolerated per kernel module and private-item leniency respectively.)",
+      "duplicate_target": {
+        "file": "rustguard-kmod/src/noise.rs",
+        "symbol": "random_bytes",
+        "similarity": "99% identical—same generic signature and wg_get_random_bytes FFI call"
+      }
+    },
+    {
+      "name": "CookieChecker",
+      "kind": "class",
+      "exported": true,
+      "line_start": 66,
+      "line_end": 71,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "NONE",
+      "documentation": "PARTIAL",
+      "confidence": 80,
+      "detail": "[USED] Server-side public API struct for cookie generation and MAC2 validation. Known false positive: workspace crate public types consumed across modules. | [UNIQUE] Struct definition for server-side cookie validation state. No similar struct found. Contains public key, secret, and protocol state. | [OK] Struct fields correctly capture public key, rotating secret, secret generation timestamp, and load flag. No correctness issues in the struct definition itself. | [LEAN] Holds exactly the state required by the WireGuard cookie spec (public key, rolling secret, timestamp, load flag). No extraneous fields or premature generalization. | [NONE] No test file exists under rustguard-kmod. The server-side pub(crate) struct and all its methods (new, verify_mac1, verify_mac2, create_reply, maybe_rotate_secret, make_cookie) have zero test coverage. Critical security logic (MAC verification, secret rotation timing, DoS-protection reply creation) is entirely untested. | [PARTIAL] pub(crate) struct with a /// summary at L65 ('Server-side: generates cookies and validates MAC2.'). No per-field /// doc comments visible on any of the four fields. Methods carry per-method docs but lack # Examples sections. Constructor new() has no doc comment. Previously reclassified to PARTIAL by deliberation. (deliberated: confirmed — NONE tests is factual and concerning — this is security-critical MAC verification and cookie generation logic with zero coverage. No test infrastructure exists for rustguard-kmod. PARTIAL documentation is correct: struct has a summary doc comment at L65 but fields and constructor lack documentation. For a security module, documenting the constructor's expected inputs (32-byte Curve25519 public key) would be valuable.)"
+    },
+    {
+      "name": "CookieState",
+      "kind": "class",
+      "exported": true,
+      "line_start": 74,
+      "line_end": 77,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "UNIQUE",
+      "tests": "NONE",
+      "documentation": "PARTIAL",
+      "confidence": 80,
+      "detail": "[USED] Client-side public API struct for storing decrypted cookies. Known false positive: workspace crate public types consumed across modules. | [UNIQUE] Struct definition for client-side cookie storage. No similar struct found. Distinct purpose from CookieChecker. | [OK] Struct fields correctly model optional stored cookie and receipt timestamp. Using Option<[u8; COOKIE_LEN]> is correct and avoids implicit zero-value ambiguity. | [LEAN] Minimal client-side cookie state: an optional cookie value and a receipt timestamp. Perfectly sized for its single responsibility. | [NONE] No test file exists under rustguard-kmod. The client-side pub(crate) struct and all its methods (new, process_reply, compute_mac2, is_fresh) have zero test coverage. Key behaviors — decrypt-and-store roundtrip, freshness expiry, zero-return when no cookie — are completely untested. | [PARTIAL] pub(crate) struct with a /// summary at L73 ('Client-side: stores a received cookie for MAC2.'). Neither field (cookie, received) carries a /// doc comment. Methods have per-method docs but lack # Examples sections. Previously reclassified to PARTIAL by deliberation. (deliberated: confirmed — NONE tests is factual — client-side cookie decrypt-and-store, freshness expiry, and zero-return-when-no-cookie behaviors are untested. PARTIAL documentation is correct: struct-level summary exists at L73 but fields and constructor are undocumented.)"
+    },
+    {
+      "name": "constant_time_eq",
+      "kind": "function",
+      "exported": false,
+      "line_start": 202,
+      "line_end": 205,
+      "correction": "OK",
+      "overengineering": "LEAN",
+      "utility": "USED",
+      "duplication": "DUPLICATE",
+      "tests": "NONE",
+      "documentation": "PARTIAL",
+      "confidence": 80,
+      "detail": "[USED] Constant-time equality check called in verify_mac1 (L122) and verify_mac2 (L128) for constant-time MAC verification. | [DUPLICATE] RAG score 0.982 with identical function in noise.rs. Both perform constant-time comparison using wg_crypto_memneq with identical logic. | [OK] Kernel wg_crypto_memneq returns 0 when the two buffers are equal and non-zero otherwise (consistent with Linux crypto_memneq semantics). The == 0 check is correct. Length guard prevents differing-length slices from being considered equal. | [LEAN] Security-critical wrapper over kernel crypto_memneq, correctly commented and justified. Cannot be replaced by a simple == due to compiler optimization risks. The length check before the unsafe call is correct and necessary. | [NONE] No test file found for rustguard-kmod. This security-critical constant-time comparison function (used in MAC verification) has no tests: no equal-slices pass, no unequal-slices fail, no length-mismatch short-circuit, and no validation that the kernel memneq wrapper correctly returns 0 on equality. | [PARTIAL] Private function with a /// doc comment explaining the security rationale (kernel crypto_memneq, cannot be optimized away). Missing parameter descriptions and explicit return semantics, but as a private 4-line helper with a meaningful security comment this is above UNDOCUMENTED. No # Examples section. (deliberated: confirmed — DUPLICATE confirmed: 100% identical to noise.rs::constant_time_eq. Security-critical function that should ideally live in one place to ensure consistent behavior. NONE tests is factual and notable — this is a security primitive used in MAC verification with no coverage. PARTIAL documentation is correct: has a meaningful doc comment explaining the security rationale (kernel crypto_memneq, cannot be optimized away) but lacks parameter/return descriptions. Raising confidence slightly as all findings are well-evidenced.)",
+      "duplicate_target": {
+        "file": "rustguard-kmod/src/noise.rs",
+        "symbol": "constant_time_eq",
+        "similarity": "100% identical—length check followed by wg_crypto_memneq for constant-time equality"
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": 1,
+      "description": "In hash(), change chunks.len() as u32 to chunks.len().min(4) as u32 when passing num_chunks to wg_blake2s_hash. The ptrs/lens arrays have a fixed capacity of 4; passing a larger value causes the C function to read beyond the stack-allocated arrays, which is undefined behaviour.",
+      "severity": "medium",
+      "effort": "small",
+      "category": "quickwin",
+      "target_symbol": null,
+      "target_lines": "L49",
+      "source": "correction"
+    },
+    {
+      "id": 2,
+      "description": "Deduplicate: `hash` duplicates `hash` in `rustguard-kmod/src/noise.rs`",
+      "severity": "medium",
+      "effort": "small",
+      "category": "refactor",
+      "source": "duplication",
+      "target_symbol": "hash",
+      "target_lines": "L41-L51"
+    },
+    {
+      "id": 3,
+      "description": "Deduplicate: `mac` duplicates `mac` in `rustguard-kmod/src/noise.rs`",
+      "severity": "medium",
+      "effort": "small",
+      "category": "refactor",
+      "source": "duplication",
+      "target_symbol": "mac",
+      "target_lines": "L53-L57"
+    },
+    {
+      "id": 4,
+      "description": "Deduplicate: `random_bytes` duplicates `random_bytes` in `rustguard-kmod/src/noise.rs`",
+      "severity": "medium",
+      "effort": "small",
+      "category": "refactor",
+      "source": "duplication",
+      "target_symbol": "random_bytes",
+      "target_lines": "L59-L63"
+    },
+    {
+      "id": 5,
+      "description": "Complete JSDoc documentation for: `CookieChecker`",
+      "severity": "low",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "CookieChecker",
+      "target_lines": "L66-L71"
+    },
+    {
+      "id": 6,
+      "description": "Complete JSDoc documentation for: `CookieState`",
+      "severity": "low",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "CookieState",
+      "target_lines": "L74-L77"
+    },
+    {
+      "id": 7,
+      "description": "Deduplicate: `constant_time_eq` duplicates `constant_time_eq` in `rustguard-kmod/src/noise.rs`",
+      "severity": "medium",
+      "effort": "small",
+      "category": "refactor",
+      "source": "duplication",
+      "target_symbol": "constant_time_eq",
+      "target_lines": "L202-L205"
+    },
+    {
+      "id": 8,
+      "description": "Complete JSDoc documentation for: `constant_time_eq`",
+      "severity": "low",
+      "effort": "trivial",
+      "category": "hygiene",
+      "source": "documentation",
+      "target_symbol": "constant_time_eq",
+      "target_lines": "L202-L205"
+    }
+  ],
+  "file_level": {
+    "unused_imports": [],
+    "circular_dependencies": [],
+    "general_notes": "Best practices score: 7/10 (1 FAIL, 3 WARN, 8 PASS)"
+  },
+  "best_practices": {
+    "score": 7,
+    "rules": [
+      {
+        "rule_id": 1,
+        "rule_name": "No unwrap in production code",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "The only unwrap-family call is `.unwrap_or([0; 24])` on line 162, which supplies a safe default and will never panic. No bare `.unwrap()` calls exist anywhere in the file."
+      },
+      {
+        "rule_id": 2,
+        "rule_name": "No unsafe blocks without clear justification comment",
+        "status": "WARN",
+        "severity": "CRITICAL",
+        "detail": "Nine unsafe blocks call extern C FFI functions. Only `constant_time_eq` has an inline justification comment (the M7 note). All others — `hash`, `mac`, `random_bytes`, `maybe_rotate_secret`, `new`, `create_reply`, `process_reply`, `is_fresh` — lack any SAFETY comment explaining which invariants are upheld (pointer validity, alignment, lifetime of borrows). The extern declarations make FFI obvious, but individual call-sites must still document their safety contracts.",
+        "lines": "L55-L57,L62-L64,L69-L71,L82-L84,L88-L90,L131-L138,L161-L168,L184-L186,L201-L203"
+      },
+      {
+        "rule_id": 3,
+        "rule_name": "Proper error handling with Result/Option",
+        "status": "FAIL",
+        "severity": "HIGH",
+        "detail": "In `create_reply` the return value of `wg_xchacha20poly1305_encrypt` (an `i32` indicating success/failure) is silently discarded via a trailing semicolon. A failed encryption leaves `encrypted_cookie` zeroed yet the reply buffer is still returned and used as if encryption succeeded. The decrypt counterpart in `process_reply` correctly checks its return value.",
+        "lines": "L125-L138"
+      },
+      {
+        "rule_id": 4,
+        "rule_name": "Derive common traits on public types",
+        "status": "WARN",
+        "severity": "MEDIUM",
+        "detail": "`CookieChecker` and `CookieState` are both `pub(crate)` exported types but carry no `#[derive]` attributes. At minimum `Debug` should be derived for both to aid in logging and test assertions. `Clone` and `PartialEq` may be intentionally omitted for security reasons (cookie values should not be freely copyable), but `Debug` has no such objection.",
+        "lines": "L72-L77,L79-L82"
+      },
+      {
+        "rule_id": 5,
+        "rule_name": "Lifetime annotations explicit where needed",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "All slice parameters use standard single-input lifetime elision (`&self`, `&[u8]`). No multi-input ambiguity exists and no lifetime can be inferred incorrectly. Elisions are idiomatic and correct throughout."
+      },
+      {
+        "rule_id": 6,
+        "rule_name": "Clippy idioms",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "No unnecessary `.clone()` calls found; all data is borrowed or moved correctly. `saturating_sub` is used appropriately for timestamp arithmetic. `match &self.cookie` with a guard in `compute_mac2` is idiomatic. The FFI pointer-array setup in `hash` is a necessary pattern and not a manual-loop anti-pattern."
+      },
+      {
+        "rule_id": 7,
+        "rule_name": "No panic! in library/production code",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "No `panic!`, `todo!`, `unimplemented!`, or `unreachable!` macro invocations anywhere in the file. The only potential panic source (`.unwrap()`) is absent — `.unwrap_or` is used instead."
+      },
+      {
+        "rule_id": 8,
+        "rule_name": "Module organization",
+        "status": "PASS",
+        "severity": "MEDIUM",
+        "detail": "`cookie.rs` sits under `rustguard-kmod/src/`, consistent with the other kmod-layer modules (`allowedips.rs`, `noise.rs`, `replay.rs`, `timers.rs`). The crate boundary is correct: cookie functionality belongs in the kernel module layer. No misplaced re-exports or cross-crate leakage observed."
+      },
+      {
+        "rule_id": 9,
+        "rule_name": "Documentation comments on public items",
+        "status": "WARN",
+        "severity": "MEDIUM",
+        "detail": "Both structs have `///` doc comments, and most `pub(crate)` methods are documented. However, `CookieChecker::new` and `CookieState::new` are undocumented constructors. For a security-sensitive module these are important entry points and should explain their expected inputs (e.g., that `our_public` is a 32-byte Curve25519 public key).",
+        "lines": "L84-L91,L149-L151"
+      },
+      {
+        "rule_id": 10,
+        "rule_name": "No hardcoded secrets or credentials",
+        "status": "PASS",
+        "severity": "CRITICAL",
+        "detail": "The constants `LABEL_COOKIE` and `LABEL_MAC1` are WireGuard protocol-defined domain-separation labels, not secrets. All cryptographic keys and secrets are generated at runtime via `random_bytes()`. No credentials, tokens, or key material are hardcoded."
+      },
+      {
+        "rule_id": 11,
+        "rule_name": "Memory safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "No `mem::forget`, `Box::into_raw`, or manual heap management. All stack-allocated arrays are passed as FFI pointers with lifetimes bounded by the enclosing unsafe block. Buffer sizes are verified by construction: `encrypted_cookie` is correctly sized at 32 bytes (16-byte cookie + 16-byte AEAD tag). Rust's default drop handles all fields correctly."
+      },
+      {
+        "rule_id": 12,
+        "rule_name": "Concurrency safety",
+        "status": "PASS",
+        "severity": "HIGH",
+        "detail": "All mutating methods (`verify_mac2`, `create_reply`, `maybe_rotate_secret`, `process_reply`) take `&mut self`, enforcing single-writer exclusion at the borrow-checker level. The struct fields are `[u8; N]`, `u64`, `bool`, and `Option<[u8; N]>`, all of which are `Send + Sync`. Callers at the kernel module layer are responsible for wrapping these structs in appropriate locking primitives (e.g., `spin::Mutex`), which is the standard kernel Rust pattern."
+      }
+    ],
+    "suggestions": [
+      {
+        "description": "Check the return value of wg_xchacha20poly1305_encrypt in create_reply and propagate failure instead of silently returning a zeroed reply.",
+        "before": "unsafe {\n    wg_xchacha20poly1305_encrypt(\n        key.as_ptr(), nonce.as_ptr(),\n        cookie.as_ptr(), COOKIE_LEN as u32,\n        mac1.as_ptr(), 16,\n        encrypted_cookie.as_mut_ptr(),\n    );\n}",
+        "after": "// SAFETY: all pointers derive from valid Rust references with lifetimes\n// that encompass this call; buffer sizes match the API contract.\nlet ret = unsafe {\n    wg_xchacha20poly1305_encrypt(\n        key.as_ptr(), nonce.as_ptr(),\n        cookie.as_ptr(), COOKIE_LEN as u32,\n        mac1.as_ptr(), 16,\n        encrypted_cookie.as_mut_ptr(),\n    )\n};\nif ret != 0 { return None; }  // change return type to Option<[u8; 64]>"
+      },
+      {
+        "description": "Add SAFETY comments to each unsafe block documenting pointer validity invariants.",
+        "before": "unsafe { wg_blake2s_hash(ptrs.as_ptr(), lens.as_ptr(), chunks.len() as u32, out.as_mut_ptr()) };",
+        "after": "// SAFETY: ptrs[i] point into `chunks` slice data which is alive for this call;\n// lens[i] match the corresponding slice lengths; out is a valid 32-byte stack buffer.\nunsafe { wg_blake2s_hash(ptrs.as_ptr(), lens.as_ptr(), chunks.len() as u32, out.as_mut_ptr()) };"
+      },
+      {
+        "description": "Derive Debug on public-crate types to aid in diagnostics and testing.",
+        "before": "pub(crate) struct CookieChecker {\n    our_public: [u8; 32],\n    secret: [u8; 32],\n    secret_generated: u64,\n    pub(crate) under_load: bool,\n}",
+        "after": "#[derive(Debug)]\npub(crate) struct CookieChecker {\n    our_public: [u8; 32],\n    secret: [u8; 32],\n    secret_generated: u64,\n    pub(crate) under_load: bool,\n}"
+      },
+      {
+        "description": "Document the new() constructors to explain the expected inputs and initialization semantics.",
+        "before": "pub(crate) fn new(our_public: [u8; 32]) -> Self {",
+        "after": "/// Creates a new `CookieChecker` bound to the given 32-byte Curve25519 public key.\n/// Immediately generates a fresh random cookie secret valid for `COOKIE_SECRET_LIFETIME_NS`.\npub(crate) fn new(our_public: [u8; 32]) -> Self {"
+      }
+    ]
+  },
+  "docs_coverage": {
+    "concepts": [],
+    "score_pct": 28
+  },
+  "axis_meta": {
+    "utility": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.07483105,
+      "duration_ms": 78614
+    },
+    "duplication": {
+      "model": "claude-haiku-4-5-20251001",
+      "cost_usd": 0.0908621,
+      "duration_ms": 85019
+    },
+    "correction": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.10702249999999999,
+      "duration_ms": 47434
+    },
+    "overengineering": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.060138000000000004,
+      "duration_ms": 15121
+    },
+    "tests": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.12661475,
+      "duration_ms": 38640
+    },
+    "best_practices": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.2007275,
+      "duration_ms": 107577
+    },
+    "documentation": {
+      "model": "claude-sonnet-4-6",
+      "cost_usd": 0.23053875000000001,
+      "duration_ms": 86243
+    }
+  },
+  "deliberation": {
+    "verdict_before": "NEEDS_REFACTOR",
+    "verdict_after": "NEEDS_REFACTOR",
+    "reclassified": 0,
+    "actions_removed": 0,
+    "reasoning": "Overall NEEDS_REFACTOR verdict is upheld. Three categories of findings are confirmed: (1) A latent correctness bug in hash() where chunks.len() can exceed the fixed-size array capacity of 4, causing potential UB in the C FFI call — this is the most actionable fix. (2) Four functions (hash, mac, random_bytes, constant_time_eq) are duplicated within the same crate between cookie.rs and noise.rs — consolidation into a shared utility module is practical and reduces maintenance burden. (3) Security-critical code (MAC verification, cookie generation, constant-time comparison) has zero test coverage due to absent test infrastructure for the kernel module crate. Additionally, the best_practices analysis identified a FAIL where create_reply silently discards the encrypt return value. All actions are valid and retained. The JSDoc terminology in actions 5/6/8 is technically wrong for Rust (should be Rustdoc) but the intent is correct and not grounds for removal."
+  }
+}

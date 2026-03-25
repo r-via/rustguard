@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "file": "rustguard-kmod/src/cookie.rs",
+  "hash": "28e76f653a54edeb7da8cc9a0e2f876f02c632510212838d0824b48a4a9e2a3e",
+  "symbols": [
+    {
+      "name": "COOKIE_SECRET_LIFETIME_NS",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 14,
+      "line_end": 14
+    },
+    {
+      "name": "COOKIE_LEN",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 15,
+      "line_end": 15
+    },
+    {
+      "name": "LABEL_COOKIE",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 16,
+      "line_end": 16
+    },
+    {
+      "name": "LABEL_MAC1",
+      "kind": "constant",
+      "exported": false,
+      "line_start": 17,
+      "line_end": 17
+    },
+    {
+      "name": "hash",
+      "kind": "function",
+      "exported": false,
+      "line_start": 41,
+      "line_end": 51
+    },
+    {
+      "name": "mac",
+      "kind": "function",
+      "exported": false,
+      "line_start": 53,
+      "line_end": 57
+    },
+    {
+      "name": "random_bytes",
+      "kind": "function",
+      "exported": false,
+      "line_start": 59,
+      "line_end": 63
+    },
+    {
+      "name": "CookieChecker",
+      "kind": "class",
+      "exported": true,
+      "line_start": 66,
+      "line_end": 71
+    },
+    {
+      "name": "CookieState",
+      "kind": "class",
+      "exported": true,
+      "line_start": 74,
+      "line_end": 77
+    },
+    {
+      "name": "constant_time_eq",
+      "kind": "function",
+      "exported": false,
+      "line_start": 202,
+      "line_end": 205
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

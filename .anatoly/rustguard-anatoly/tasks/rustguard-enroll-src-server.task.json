@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "file": "rustguard-enroll/src/server.rs",
+  "hash": "f3016737dd672fbe1b5915ebbf0512acf56994ffc93c4b3964798331a164654d",
+  "symbols": [
+    {
+      "name": "EnrolledPeer",
+      "kind": "class",
+      "exported": false,
+      "line_start": 27,
+      "line_end": 31
+    },
+    {
+      "name": "PeerState",
+      "kind": "class",
+      "exported": false,
+      "line_start": 33,
+      "line_end": 37
+    },
+    {
+      "name": "ServerState",
+      "kind": "class",
+      "exported": false,
+      "line_start": 39,
+      "line_end": 47
+    },
+    {
+      "name": "ServeConfig",
+      "kind": "class",
+      "exported": true,
+      "line_start": 49,
+      "line_end": 62
+    },
+    {
+      "name": "run",
+      "kind": "function",
+      "exported": true,
+      "line_start": 64,
+      "line_end": 532
+    },
+    {
+      "name": "rand_index",
+      "kind": "function",
+      "exported": false,
+      "line_start": 534,
+      "line_end": 538
+    },
+    {
+      "name": "base64_key",
+      "kind": "function",
+      "exported": false,
+      "line_start": 541,
+      "line_end": 544
+    },
+    {
+      "name": "setup_xdp",
+      "kind": "function",
+      "exported": false,
+      "line_start": 548,
+      "line_end": 577
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}

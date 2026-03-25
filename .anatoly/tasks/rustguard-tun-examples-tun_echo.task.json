@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "file": "rustguard-tun/examples/tun_echo.rs",
+  "hash": "8a79615b16aed62c5efe4c8df4228227057647d468e5d1368e80e513c90cc2db",
+  "symbols": [
+    {
+      "name": "main",
+      "kind": "function",
+      "exported": false,
+      "line_start": 12,
+      "line_end": 79
+    },
+    {
+      "name": "icmp_checksum",
+      "kind": "function",
+      "exported": false,
+      "line_start": 81,
+      "line_end": 83
+    },
+    {
+      "name": "ip_checksum",
+      "kind": "function",
+      "exported": false,
+      "line_start": 85,
+      "line_end": 87
+    },
+    {
+      "name": "checksum_fold",
+      "kind": "function",
+      "exported": false,
+      "line_start": 89,
+      "line_end": 103
+    }
+  ],
+  "language": "rust",
+  "parse_method": "ast",
+  "scanned_at": "2026-03-25T09:49:59.999Z"
+}
