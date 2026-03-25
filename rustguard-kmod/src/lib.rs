@@ -418,9 +418,10 @@ unsafe fn do_xmit(skb: VoidPtr, priv_: VoidPtr) -> i32 {
 // ── RX path ───────────────────────────────────────────────────────────
 
 /// RX callback: handle incoming WireGuard messages (handshake or transport).
+/// src_ip and src_port are in host byte order, extracted from the IP/UDP headers.
 #[no_mangle]
-pub extern "C" fn rustguard_rx(skb: VoidPtr, priv_: VoidPtr) -> i32 {
-    unsafe { do_rx(skb, priv_) }
+pub extern "C" fn rustguard_rx(skb: VoidPtr, priv_: VoidPtr, src_ip: u32, src_port: u16) -> i32 {
+    unsafe { do_rx(skb, priv_, src_ip, src_port) }
 }
 
 // SAFETY: C1 concurrency model.
@@ -432,7 +433,7 @@ pub extern "C" fn rustguard_rx(skb: VoidPtr, priv_: VoidPtr) -> i32 {
 // index_map, replay_window reset) only happen in RX context.
 // index_map: writes only during handshake (rare), reads on every RX packet.
 // peer.replay_window: exclusive to RX (socket lock serialization).
-unsafe fn do_rx(skb: VoidPtr, priv_: VoidPtr) -> i32 {
+unsafe fn do_rx(skb: VoidPtr, priv_: VoidPtr, src_ip: u32, src_port: u16) -> i32 {
     unsafe {
         let state = priv_ as *mut DeviceState;
 
@@ -449,15 +450,15 @@ unsafe fn do_rx(skb: VoidPtr, priv_: VoidPtr) -> i32 {
 
         match msg_type {
             noise::MSG_INITIATION => {
-                handle_initiation(state, pkt, pkt_len);
+                handle_initiation(state, pkt, pkt_len, src_ip, src_port);
                 wg_kfree_skb(skb);
             }
             noise::MSG_RESPONSE => {
-                handle_response(state, pkt, pkt_len);
+                handle_response(state, pkt, pkt_len, src_ip, src_port);
                 wg_kfree_skb(skb);
             }
             noise::MSG_TRANSPORT => {
-                handle_transport(state, skb, pkt, pkt_len);
+                handle_transport(state, skb, pkt, pkt_len, src_ip, src_port);
                 // skb consumed by handle_transport
             }
             _ => {
@@ -471,7 +472,10 @@ unsafe fn do_rx(skb: VoidPtr, priv_: VoidPtr) -> i32 {
 
 /// Handle handshake initiation (type 1) — we are the responder.
 /// SAFETY: Called only from do_rx with socket lock held (single-threaded RX).
-unsafe fn handle_initiation(state: *mut DeviceState, pkt: &[u8], pkt_len: usize) {
+unsafe fn handle_initiation(
+    state: *mut DeviceState, pkt: &[u8], pkt_len: usize,
+    src_ip: u32, src_port: u16,
+) {
     unsafe {
         if pkt_len < noise::INITIATION_SIZE { return; }
 
@@ -493,11 +497,9 @@ unsafe fn handle_initiation(state: *mut DeviceState, pkt: &[u8], pkt_len: usize)
         );
 
         if let Some((initiator_public, timestamp, resp, keys)) = result {
-            // H3: Timestamp replay protection — only accept strictly increasing timestamps.
-            // TAI64N is big-endian encoded, so byte-wise comparison gives correct ordering.
+            // H3: Timestamp replay protection.
             if let Some(ref peer) = (*state).peers[0] {
                 if peer.last_timestamp != [0u8; 12] && timestamp <= peer.last_timestamp {
-                    pr_info!("rustguard: rejecting replayed handshake initiation\n");
                     return;
                 }
             }
@@ -506,24 +508,25 @@ unsafe fn handle_initiation(state: *mut DeviceState, pkt: &[u8], pkt_len: usize)
                 initiator_public[0], initiator_public[1],
                 initiator_public[2], initiator_public[3]);
 
-            if let Some(ref peer) = (*state).peers[0] {
-                wg_socket_send(
-                    (*state).udp_sock,
-                    resp.as_ptr(), noise::RESPONSE_SIZE as u32,
-                    peer.endpoint_ip, peer.endpoint_port,
-                );
-            }
+            // Send response to the ACTUAL source address, not the preconfigured endpoint.
+            // This is how WireGuard handles NAT traversal and roaming.
+            wg_socket_send(
+                (*state).udp_sock,
+                resp.as_ptr(), noise::RESPONSE_SIZE as u32,
+                src_ip, src_port,
+            );
 
-            // H5: Register sender index for RX lookup (16-bit index space).
             let idx_slot = (keys.our_index as usize) & 0xFFFF;
             (*state).index_map[idx_slot] = Some(0);
 
             if let Some(ref mut peer) = (*state).peers[0] {
                 peer.public_key = initiator_public;
+                // Update endpoint to where the packet came from (roaming).
+                peer.endpoint_ip = src_ip;
+                peer.endpoint_port = src_port;
                 peer.session = Some(keys);
                 peer.replay_window = replay::ReplayWindow::new();
                 peer.timers.session_started();
-                // H3: Update last accepted timestamp.
                 peer.last_timestamp = timestamp;
                 pr_info!("rustguard: session established (responder)\n");
             }
@@ -533,24 +536,37 @@ unsafe fn handle_initiation(state: *mut DeviceState, pkt: &[u8], pkt_len: usize)
 
 /// Handle handshake response (type 2) — we are the initiator.
 /// SAFETY: Called only from do_rx with socket lock held (single-threaded RX).
-unsafe fn handle_response(state: *mut DeviceState, pkt: &[u8], pkt_len: usize) {
+unsafe fn handle_response(
+    state: *mut DeviceState, pkt: &[u8], pkt_len: usize,
+    src_ip: u32, src_port: u16,
+) {
     unsafe {
         if pkt_len < noise::RESPONSE_SIZE { return; }
 
         let resp: &[u8; noise::RESPONSE_SIZE] =
             pkt[..noise::RESPONSE_SIZE].try_into().unwrap_or(&[0u8; noise::RESPONSE_SIZE]);
 
-        let pending = match (*state).peers[0].as_mut().and_then(|p| p.pending_handshake.take()) {
-            Some(p) => p,
-            None => { return; }
-        };
+        // Peek at pending state — don't consume it until validation passes.
+        // If process_response fails (MAC1, DH), we want to keep the state
+        // so a retransmitted response can be processed.
+        let has_pending = (*state).peers[0]
+            .as_ref()
+            .map(|p| p.pending_handshake.is_some())
+            .unwrap_or(false);
+        if !has_pending { return; }
+
+        // Now take it — process_response will validate MAC1 and DH.
+        // If it fails, the handshake state is consumed (initiator must retry).
+        let pending = (*state).peers[0].as_mut().unwrap().pending_handshake.take().unwrap();
 
         if let Some(keys) = noise::process_response(pending, &(*state).static_secret, resp) {
-            // H5: 16-bit index space.
             let idx_slot = (keys.our_index as usize) & 0xFFFF;
             (*state).index_map[idx_slot] = Some(0);
 
             if let Some(ref mut peer) = (*state).peers[0] {
+                // Update endpoint to actual source (roaming).
+                peer.endpoint_ip = src_ip;
+                peer.endpoint_port = src_port;
                 peer.session = Some(keys);
                 peer.replay_window = replay::ReplayWindow::new();
                 peer.timers.session_started();
@@ -563,7 +579,10 @@ unsafe fn handle_response(state: *mut DeviceState, pkt: &[u8], pkt_len: usize) {
 /// Handle transport data (type 4) — decrypt with replay protection, inject into stack.
 /// SAFETY: Called only from do_rx with socket lock held (single-threaded RX).
 /// replay_window is exclusive to RX path due to socket lock serialization.
-unsafe fn handle_transport(state: *mut DeviceState, skb: VoidPtr, pkt: &[u8], pkt_len: usize) {
+unsafe fn handle_transport(
+    state: *mut DeviceState, skb: VoidPtr, pkt: &[u8], pkt_len: usize,
+    src_ip: u32, src_port: u16,
+) {
     unsafe {
         if pkt_len < WG_HEADER_SIZE + AEAD_TAG_SIZE {
             wg_kfree_skb(skb);
@@ -620,6 +639,13 @@ unsafe fn handle_transport(state: *mut DeviceState, skb: VoidPtr, pkt: &[u8], pk
 
         // Update replay window AFTER successful AEAD verification.
         peer.replay_window.update(counter);
+
+        // Roaming: update endpoint on authenticated data.
+        // Only change if the source actually differs (avoid cache line dirtying).
+        if peer.endpoint_ip != src_ip || peer.endpoint_port != src_port {
+            peer.endpoint_ip = src_ip;
+            peer.endpoint_port = src_port;
+        }
 
         let plaintext_len = encrypted_len - AEAD_TAG_SIZE;
 

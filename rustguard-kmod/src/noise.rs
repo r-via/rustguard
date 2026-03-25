@@ -68,25 +68,27 @@ const TAI64_EPOCH_OFFSET: u64 = 0x4000_0000_0000_000a;
 
 // ── Crypto helpers (calling C shim) ───────────────────────────────────
 
-/// BLAKE2s-256 hash of concatenated chunks.
+/// BLAKE2s-256 hash of concatenated chunks (max 8).
 fn hash(chunks: &[&[u8]]) -> [u8; 32] {
+    // Cap at 8 — the C shim receives exactly this many pointers.
+    let num = if chunks.len() > 8 { 8 } else { chunks.len() };
     let ptrs: [*const u8; 8] = {
         let mut p = [core::ptr::null(); 8];
-        for (i, c) in chunks.iter().enumerate().take(8) {
+        for (i, c) in chunks.iter().enumerate().take(num) {
             p[i] = c.as_ptr();
         }
         p
     };
     let lens: [u32; 8] = {
         let mut l = [0u32; 8];
-        for (i, c) in chunks.iter().enumerate().take(8) {
+        for (i, c) in chunks.iter().enumerate().take(num) {
             l[i] = c.len() as u32;
         }
         l
     };
     let mut out = [0u8; 32];
     unsafe {
-        wg_blake2s_hash(ptrs.as_ptr(), lens.as_ptr(), chunks.len() as u32, out.as_mut_ptr());
+        wg_blake2s_hash(ptrs.as_ptr(), lens.as_ptr(), num as u32, out.as_mut_ptr());
     }
     out
 }

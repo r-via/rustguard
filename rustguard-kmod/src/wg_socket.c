@@ -29,8 +29,12 @@ void wg_skb_pull(struct sk_buff *skb, u32 len);
 u32 wg_skb_len(struct sk_buff *skb);
 u8 *wg_skb_data_ptr(struct sk_buff *skb);
 
-/* Forward declaration — implemented in Rust. */
-extern int rustguard_rx(struct sk_buff *skb, void *rust_priv);
+/* Forward declaration — implemented in Rust.
+ * src_ip: source IPv4 in host byte order.
+ * src_port: source port in host byte order.
+ */
+extern int rustguard_rx(struct sk_buff *skb, void *rust_priv,
+			unsigned int src_ip, unsigned short src_port);
 
 /*
  * UDP encap_rcv callback — called by the kernel when a UDP packet
@@ -39,23 +43,37 @@ extern int rustguard_rx(struct sk_buff *skb, void *rust_priv);
 static int wg_udp_encap_recv(struct sock *sk, struct sk_buff *skb)
 {
 	void *rust_priv = sk->sk_user_data;
+	struct iphdr *iph;
+	struct udphdr *udph;
+	unsigned int src_ip = 0;
+	unsigned short src_port = 0;
 
 	if (!rust_priv) {
 		kfree_skb(skb);
 		return 0;
 	}
 
+	/* Extract source IP:port BEFORE stripping headers.
+	 * Needed for endpoint roaming — reply to where the packet came from,
+	 * not where we think the peer is. */
+	iph = ip_hdr(skb);
+	if (iph)
+		src_ip = ntohl(iph->saddr);
+
+	udph = udp_hdr(skb);
+	if (udph)
+		src_port = ntohs(udph->source);
+
 	/* Strip the UDP header — we want the WireGuard payload. */
 	__skb_pull(skb, sizeof(struct udphdr));
 
-	/* Ensure the skb data is linear (not fragmented).
-	 * Large packets may have data in frags — we need it contiguous. */
+	/* Ensure the skb data is linear (not fragmented). */
 	if (skb_linearize(skb)) {
 		kfree_skb(skb);
 		return 0;
 	}
 
-	return rustguard_rx(skb, rust_priv);
+	return rustguard_rx(skb, rust_priv, src_ip, src_port);
 }
 
 /*
