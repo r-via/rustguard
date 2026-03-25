@@ -12,6 +12,7 @@
 #include <crypto/chacha20poly1305.h>
 #include <crypto/blake2s.h>
 #include <crypto/curve25519.h>
+#include <crypto/algapi.h> /* crypto_memneq */
 
 /* ── Prototypes ────────────────────────────────────────────────────── */
 
@@ -221,6 +222,32 @@ void wg_ktime_get_real(s64 *secs, s64 *nsecs)
 	*nsecs = ts.tv_nsec;
 }
 EXPORT_SYMBOL_GPL(wg_ktime_get_real);
+
+/* ── Secure memory operations ──────────────────────────────────────── */
+
+/*
+ * wg_memzero: Guaranteed-not-optimized-away memset for key material.
+ * Wraps memzero_explicit which uses barrier() to prevent dead-store
+ * elimination. Called from Rust via FFI to zeroize secrets.
+ */
+void wg_memzero(void *ptr, size_t len);
+void wg_memzero(void *ptr, size_t len)
+{
+	memzero_explicit(ptr, len);
+}
+EXPORT_SYMBOL_GPL(wg_memzero);
+
+/*
+ * wg_crypto_memneq: Constant-time memory comparison.
+ * Wraps crypto_memneq which the compiler cannot optimize into
+ * a short-circuit comparison. Returns 0 if equal, nonzero otherwise.
+ */
+int wg_crypto_memneq(const void *a, const void *b, size_t len);
+int wg_crypto_memneq(const void *a, const void *b, size_t len)
+{
+	return crypto_memneq(a, b, len);
+}
+EXPORT_SYMBOL_GPL(wg_crypto_memneq);
 
 int wg_crypto_init(void) { return 0; }
 EXPORT_SYMBOL_GPL(wg_crypto_init);

@@ -38,6 +38,23 @@ extern "C" {
     fn wg_curve25519_generate_secret(secret: *mut u8);
     fn wg_curve25519_generate_public(pub_key: *mut u8, secret: *const u8);
     fn wg_get_random_bytes(buf: *mut u8, len: u32);
+    fn wg_memzero(ptr: *mut u8, len: usize);
+    fn wg_crypto_memneq(a: *const u8, b: *const u8, len: usize) -> i32;
+}
+
+/// Zeroize a mutable byte slice using memzero_explicit (cannot be optimized away).
+pub(crate) fn zeroize(buf: &mut [u8]) {
+    if !buf.is_empty() {
+        unsafe { wg_memzero(buf.as_mut_ptr(), buf.len()) };
+    }
+}
+
+/// Constant-time equality comparison using kernel crypto_memneq.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    unsafe { wg_crypto_memneq(a.as_ptr(), b.as_ptr(), a.len()) == 0 }
 }
 
 // ── WireGuard protocol constants ──────────────────────────────────────
@@ -101,17 +118,21 @@ fn hkdf(key: &[u8; 32], input: &[u8]) -> ([u8; 32], [u8; 32], [u8; 32]) {
     (o1, o2, o3)
 }
 
-/// AEAD encrypt (ChaCha20-Poly1305). Returns ciphertext + 16-byte tag.
-fn seal(key: &[u8; 32], counter: u64, ad: &[u8], plaintext: &[u8], dst: &mut [u8]) -> usize {
-    unsafe {
+/// AEAD encrypt (ChaCha20-Poly1305). Returns ciphertext + 16-byte tag, or None on failure.
+fn seal(key: &[u8; 32], counter: u64, ad: &[u8], plaintext: &[u8], dst: &mut [u8]) -> Option<usize> {
+    let ret = unsafe {
         wg_chacha20poly1305_encrypt(
             key.as_ptr(), counter,
             plaintext.as_ptr(), plaintext.len() as u32,
             ad.as_ptr(), ad.len() as u32,
             dst.as_mut_ptr(),
-        );
+        )
+    };
+    if ret == 0 {
+        Some(plaintext.len() + AEAD_TAG_SIZE)
+    } else {
+        None
     }
-    plaintext.len() + AEAD_TAG_SIZE
 }
 
 /// AEAD decrypt. Returns plaintext length or None on auth failure.
@@ -175,10 +196,10 @@ fn mix_key(ck: &[u8; 32], dh_result: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
 }
 
 /// Encrypt-and-hash: AEAD encrypt, mix ciphertext into hash.
-fn encrypt_and_hash(key: &[u8; 32], h: &[u8; 32], plaintext: &[u8], ct_buf: &mut [u8]) -> ([u8; 32], usize) {
-    let ct_len = seal(key, 0, h, plaintext, ct_buf);
+fn encrypt_and_hash(key: &[u8; 32], h: &[u8; 32], plaintext: &[u8], ct_buf: &mut [u8]) -> Option<([u8; 32], usize)> {
+    let ct_len = seal(key, 0, h, plaintext, ct_buf)?;
     let new_h = mix_hash(h, &ct_buf[..ct_len]);
-    (new_h, ct_len)
+    Some((new_h, ct_len))
 }
 
 /// Decrypt-and-hash: AEAD decrypt, mix ciphertext into hash.
@@ -258,14 +279,15 @@ pub(crate) struct InitiatorState {
 
 /// Create a handshake initiation message (type 1).
 ///
-/// Returns the 148-byte wire message and the state needed to process the response.
+/// Returns the 148-byte wire message and the state needed to process the response,
+/// or None if a DH operation produces a zero result (low-order point attack).
 pub(crate) fn create_initiation(
     our_static_secret: &[u8; 32],
     our_static_public: &[u8; 32],
     their_public: &[u8; 32],
     sender_index: u32,
     psk: &[u8; 32],
-) -> ([u8; INITIATION_SIZE], InitiatorState) {
+) -> Option<([u8; INITIATION_SIZE], InitiatorState)> {
     let mut ck = initial_chain_key();
     let mut h = initial_hash(&ck);
 
@@ -273,27 +295,32 @@ pub(crate) fn create_initiation(
     h = mix_hash(&h, their_public);
 
     // Generate ephemeral keypair.
-    let (eph_secret, eph_public) = generate_keypair();
+    let (mut eph_secret, eph_public) = generate_keypair();
+
     h = mix_hash(&h, &eph_public);
 
-    // DH(ephemeral, responder_static).
-    let dh1 = dh(&eph_secret, their_public).unwrap_or([0u8; 32]);
-    let key;
+    // DH(ephemeral, responder_static) — C2: fail on zero result.
+    let mut dh1 = dh(&eph_secret, their_public)?;
+    let mut key;
     (ck, key) = mix_key(&ck, &dh1);
+    zeroize(&mut dh1);
 
     // Encrypt our static public key.
     let mut encrypted_static = [0u8; 48]; // 32 + 16 tag
-    (h, _) = encrypt_and_hash(&key, &h, our_static_public, &mut encrypted_static);
+    (h, _) = encrypt_and_hash(&key, &h, our_static_public, &mut encrypted_static)?;
+    zeroize(&mut key);
 
-    // DH(our_static, responder_static).
-    let dh2 = dh(our_static_secret, their_public).unwrap_or([0u8; 32]);
-    let key2;
+    // DH(our_static, responder_static) — C2: fail on zero result.
+    let mut dh2 = dh(our_static_secret, their_public)?;
+    let mut key2;
     (ck, key2) = mix_key(&ck, &dh2);
+    zeroize(&mut dh2);
 
     // Encrypt timestamp.
     let timestamp = tai64n_now();
     let mut encrypted_timestamp = [0u8; 28]; // 12 + 16 tag
-    (h, _) = encrypt_and_hash(&key2, &h, &timestamp, &mut encrypted_timestamp);
+    (h, _) = encrypt_and_hash(&key2, &h, &timestamp, &mut encrypted_timestamp)?;
+    zeroize(&mut key2);
 
     // Build wire message.
     let mut msg = [0u8; INITIATION_SIZE];
@@ -313,16 +340,31 @@ pub(crate) fn create_initiation(
         their_public: *their_public,
         psk: *psk,
     };
+    // C3: zero the local eph_secret copy (state has its own copy).
+    zeroize(&mut eph_secret);
 
-    (msg, state)
+    Some((msg, state))
 }
 
 /// Process a handshake response (type 2) and derive transport keys.
 pub(crate) fn process_response(
-    state: InitiatorState,
+    mut state: InitiatorState,
     our_static_secret: &[u8; 32],
     resp: &[u8; RESPONSE_SIZE],
 ) -> Option<TransportKeys> {
+    // H6: Verify MAC1 before any DH operations.
+    // The responder computed MAC1 as compute_mac1(&initiator_public, &resp[..60]).
+    // We are the initiator — derive our public key from our secret to verify.
+    let mut our_static_public = [0u8; 32];
+    unsafe { wg_curve25519_generate_public(our_static_public.as_mut_ptr(), our_static_secret.as_ptr()) };
+    let expected_mac1 = compute_mac1(&our_static_public, &resp[..60]);
+    if !constant_time_eq(&resp[60..76], &expected_mac1) {
+        zeroize(&mut state.ck);
+        zeroize(&mut state.h);
+        zeroize(&mut state.eph_secret);
+        return None;
+    }
+
     let mut ck = state.ck;
     let mut h = state.h;
 
@@ -330,6 +372,9 @@ pub(crate) fn process_response(
     let resp_sender = u32::from_le_bytes(resp[4..8].try_into().ok()?);
     let resp_receiver = u32::from_le_bytes(resp[8..12].try_into().ok()?);
     if resp_receiver != state.sender_index {
+        zeroize(&mut ck);
+        zeroize(&mut h);
+        zeroize(&mut state.eph_secret);
         return None;
     }
 
@@ -340,17 +385,20 @@ pub(crate) fn process_response(
     h = mix_hash(&h, &resp_eph);
 
     // DH(our_ephemeral, responder_ephemeral).
-    let dh1 = dh(&state.eph_secret, &resp_eph)?;
+    let mut dh1 = dh(&state.eph_secret, &resp_eph)?;
     (ck, _) = mix_key(&ck, &dh1);
+    zeroize(&mut dh1);
 
     // DH(our_static, responder_ephemeral).
-    let dh2 = dh(our_static_secret, &resp_eph)?;
+    let mut dh2 = dh(our_static_secret, &resp_eph)?;
     (ck, _) = mix_key(&ck, &dh2);
+    zeroize(&mut dh2);
 
     // PSK phase.
-    let (new_ck, t, key) = hkdf(&ck, &state.psk);
+    let (new_ck, mut t, key) = hkdf(&ck, &state.psk);
     ck = new_ck;
     h = mix_hash(&h, &t);
+    zeroize(&mut t);
 
     // Decrypt empty payload.
     let mut empty = [0u8; 0];
@@ -358,6 +406,14 @@ pub(crate) fn process_response(
 
     // Derive transport keys: initiator sends with first, receives with second.
     let (send_key, recv_key, _) = hkdf(&ck, &[]);
+
+    // C3: zeroize intermediate key material.
+    zeroize(&mut ck);
+    zeroize(&mut h);
+    zeroize(&mut state.eph_secret);
+    zeroize(&mut state.ck);
+    zeroize(&mut state.h);
+    zeroize(&mut state.psk);
 
     Some(TransportKeys {
         key_send: send_key,
@@ -372,14 +428,16 @@ pub(crate) fn process_response(
 
 /// Process a handshake initiation (type 1) and generate a response (type 2).
 ///
-/// Returns: (initiator_public_key, response_message, transport_keys)
+/// Returns: (initiator_public_key, timestamp, response_message, transport_keys)
+/// The caller MUST check the timestamp against the peer's last_timestamp for replay
+/// protection (H3).
 pub(crate) fn process_initiation(
     our_static_secret: &[u8; 32],
     our_static_public: &[u8; 32],
     msg: &[u8; INITIATION_SIZE],
     responder_index: u32,
     psk: &[u8; 32],
-) -> Option<([u8; 32], [u8; RESPONSE_SIZE], TransportKeys)> {
+) -> Option<([u8; 32], [u8; 12], [u8; RESPONSE_SIZE], TransportKeys)> {
     // Verify MAC1 first — cheap check before any DH.
     let expected_mac1 = compute_mac1(our_static_public, &msg[..116]);
     if !constant_time_eq(&msg[116..132], &expected_mac1) {
@@ -399,50 +457,63 @@ pub(crate) fn process_initiation(
     h = mix_hash(&h, &init_eph);
 
     // DH(our_static, initiator_ephemeral).
-    let dh1 = dh(our_static_secret, &init_eph)?;
-    let key;
+    let mut dh1 = dh(our_static_secret, &init_eph)?;
+    let mut key;
     (ck, key) = mix_key(&ck, &dh1);
+    zeroize(&mut dh1);
 
     // Decrypt initiator's static public key.
     let mut initiator_public = [0u8; 32];
     let (new_h, _) = decrypt_and_hash(&key, &h, &msg[40..88], &mut initiator_public)?;
     h = new_h;
+    zeroize(&mut key);
 
     // DH(our_static, initiator_static).
-    let dh2 = dh(our_static_secret, &initiator_public)?;
-    let key2;
+    let mut dh2 = dh(our_static_secret, &initiator_public)?;
+    let mut key2;
     (ck, key2) = mix_key(&ck, &dh2);
+    zeroize(&mut dh2);
 
-    // Decrypt timestamp (we don't validate it for now — TODO: replay check).
-    let mut _timestamp = [0u8; 12];
-    let (new_h, _) = decrypt_and_hash(&key2, &h, &msg[88..116], &mut _timestamp)?;
+    // Decrypt timestamp — caller checks for replay (H3).
+    let mut timestamp = [0u8; 12];
+    let (new_h, _) = decrypt_and_hash(&key2, &h, &msg[88..116], &mut timestamp)?;
     h = new_h;
+    zeroize(&mut key2);
 
     // ── Build response ──
 
-    let (resp_eph_secret, resp_eph_public) = generate_keypair();
+    let (mut resp_eph_secret, resp_eph_public) = generate_keypair();
     h = mix_hash(&h, &resp_eph_public);
 
     // DH(resp_ephemeral, initiator_ephemeral).
-    let dh3 = dh(&resp_eph_secret, &init_eph)?;
+    let mut dh3 = dh(&resp_eph_secret, &init_eph)?;
     (ck, _) = mix_key(&ck, &dh3);
+    zeroize(&mut dh3);
 
     // DH(resp_ephemeral, initiator_static).
-    let dh4 = dh(&resp_eph_secret, &initiator_public)?;
+    let mut dh4 = dh(&resp_eph_secret, &initiator_public)?;
     (ck, _) = mix_key(&ck, &dh4);
+    zeroize(&mut dh4);
+    zeroize(&mut resp_eph_secret);
 
     // PSK phase.
-    let (new_ck, t, key3) = hkdf(&ck, psk);
+    let (new_ck, mut t, mut key3) = hkdf(&ck, psk);
     ck = new_ck;
     h = mix_hash(&h, &t);
+    zeroize(&mut t);
 
     // Encrypt empty.
     let mut encrypted_empty = [0u8; 16]; // 0 + 16 tag
-    (h, _) = encrypt_and_hash(&key3, &h, &[], &mut encrypted_empty);
+    (h, _) = encrypt_and_hash(&key3, &h, &[], &mut encrypted_empty)?;
+    zeroize(&mut key3);
     let _ = h;
 
     // Derive transport keys: responder sends with second, receives with first.
     let (recv_key, send_key, _) = hkdf(&ck, &[]);
+
+    // C3: zeroize intermediate key material.
+    zeroize(&mut ck);
+    zeroize(&mut h);
 
     // Build response wire message.
     let mut resp = [0u8; RESPONSE_SIZE];
@@ -464,18 +535,9 @@ pub(crate) fn process_initiation(
         send_counter: AtomicU64::new(0),
     };
 
-    Some((initiator_public, resp, keys))
+    Some((initiator_public, timestamp, resp, keys))
 }
 
 // ── Utility ───────────────────────────────────────────────────────────
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
-}
+// constant_time_eq and zeroize are defined at the top of this file,
+// using kernel crypto_memneq and memzero_explicit respectively.

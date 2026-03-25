@@ -34,6 +34,8 @@ extern "C" {
     ) -> i32;
     fn wg_get_random_bytes(buf: *mut u8, len: u32);
     fn wg_ktime_get_ns() -> u64;
+    // M7: Kernel crypto_memneq — guaranteed constant-time, not subject to compiler optimization.
+    fn wg_crypto_memneq(a: *const u8, b: *const u8, len: usize) -> i32;
 }
 
 fn hash(chunks: &[&[u8]]) -> [u8; 32] {
@@ -196,11 +198,8 @@ impl CookieState {
     }
 }
 
+/// M7: Constant-time equality using kernel crypto_memneq (cannot be optimized away).
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() { return false; }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
+    unsafe { wg_crypto_memneq(a.as_ptr(), b.as_ptr(), a.len()) == 0 }
 }

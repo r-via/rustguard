@@ -106,6 +106,9 @@ struct Peer {
     timers: timers::SessionTimers,
     /// Client-side cookie state (for MAC2).
     cookie_state: cookie::CookieState,
+    /// H3: Last received TAI64N timestamp (for handshake replay protection).
+    /// Only accept initiations with a strictly greater timestamp.
+    last_timestamp: [u8; 12],
 }
 
 /// Module-level device state.
@@ -125,7 +128,9 @@ struct DeviceState {
     /// AllowedIPs routing table.
     allowed_ips: allowedips::AllowedIps,
     /// Sender index → peer index lookup (for RX path).
-    index_map: [Option<usize>; 256],
+    /// H5: 16-bit index space (65536 slots) to reduce collision probability.
+    /// Heap-allocated via DeviceState so the ~128KB is fine.
+    index_map: [Option<usize>; 65536],
     /// Cookie checker for DoS protection (server-side).
     cookie_checker: Option<cookie::CookieChecker>,
 }
@@ -232,6 +237,7 @@ impl kernel::Module for RustGuard {
                 replay_window: replay::ReplayWindow::new(),
                 timers: timers::SessionTimers::new(),
                 cookie_state: cookie::CookieState::new(),
+                last_timestamp: [0u8; 12],
             };
 
             unsafe {
@@ -257,27 +263,29 @@ impl kernel::Module for RustGuard {
                 unsafe { wg_get_random_bytes(idx_bytes.as_mut_ptr(), 4) };
                 let sender_index = u32::from_le_bytes(idx_bytes);
 
-                let (init_msg, hs_state) = noise::create_initiation(
+                // C2: create_initiation now returns Option — DH zero result is fatal.
+                if let Some((init_msg, hs_state)) = noise::create_initiation(
                     &static_secret,
                     &static_public,
                     &peer_pubkey,
                     sender_index,
                     &[0u8; 32],
-                );
-
-                unsafe {
-                    wg_socket_send(
-                        (*state_raw).udp_sock,
-                        init_msg.as_ptr(),
-                        noise::INITIATION_SIZE as u32,
-                        pip, pport,
-                    );
-                    if let Some(ref mut p) = (*state_raw).peers[0] {
-                        p.pending_handshake = Some(hs_state);
+                ) {
+                    unsafe {
+                        wg_socket_send(
+                            (*state_raw).udp_sock,
+                            init_msg.as_ptr(),
+                            noise::INITIATION_SIZE as u32,
+                            pip, pport,
+                        );
+                        if let Some(ref mut p) = (*state_raw).peers[0] {
+                            p.pending_handshake = Some(hs_state);
+                        }
                     }
+                    pr_info!("rustguard: handshake initiation sent\n");
+                } else {
+                    pr_err!("rustguard: handshake initiation failed (bad peer key?)\n");
                 }
-
-                pr_info!("rustguard: handshake initiation sent\n");
             }
         }
 
@@ -308,7 +316,21 @@ impl Drop for RustGuard {
 }
 
 unsafe fn cleanup_state(ptr: *mut DeviceState) {
-    unsafe { drop(KBox::from_raw(ptr)) };
+    // C3: Zeroize key material before freeing.
+    unsafe {
+        noise::zeroize(&mut (*ptr).static_secret);
+        // Zeroize peer key material too.
+        for peer_slot in (*ptr).peers.iter_mut() {
+            if let Some(ref mut peer) = peer_slot {
+                noise::zeroize(&mut peer.psk);
+                if let Some(ref mut session) = peer.session {
+                    noise::zeroize(&mut session.key_send);
+                    noise::zeroize(&mut session.key_recv);
+                }
+            }
+        }
+        drop(KBox::from_raw(ptr));
+    }
     DEVICE_STATE_PTR.store(core::ptr::null_mut(), Ordering::Release);
 }
 
@@ -351,6 +373,15 @@ unsafe fn do_xmit(skb: VoidPtr, priv_: VoidPtr) -> i32 {
             None => { wg_kfree_skb(skb); return 0; }
         };
 
+        // C5: Check REJECT_AFTER_MESSAGES / session expiry before sending.
+        // Use a peek at the counter (Relaxed is fine — worst case we send one
+        // extra packet before the next check catches it).
+        let current_counter = session.send_counter.load(Ordering::Relaxed);
+        if peer.timers.is_expired(current_counter) {
+            wg_kfree_skb(skb);
+            return 0;
+        }
+
         let total_len = WG_HEADER_SIZE + data_len as usize + AEAD_TAG_SIZE;
         let mut buf = [0u8; 2048];
         if total_len > buf.len() {
@@ -392,9 +423,18 @@ pub extern "C" fn rustguard_rx(skb: VoidPtr, priv_: VoidPtr) -> i32 {
     unsafe { do_rx(skb, priv_) }
 }
 
+// SAFETY: C1 concurrency model.
+// The RX path runs from encap_rcv which holds the UDP socket lock, so RX is
+// effectively single-threaded. We use a raw pointer to DeviceState and obtain
+// &mut references to individual peers only when needed. The TX path (do_xmit)
+// only reads DeviceState through a shared reference — it reads session keys and
+// atomically increments send_counter. Handshake state writes (session install,
+// index_map, replay_window reset) only happen in RX context.
+// index_map: writes only during handshake (rare), reads on every RX packet.
+// peer.replay_window: exclusive to RX (socket lock serialization).
 unsafe fn do_rx(skb: VoidPtr, priv_: VoidPtr) -> i32 {
     unsafe {
-        let state = &mut *(priv_ as *mut DeviceState);
+        let state = priv_ as *mut DeviceState;
 
         let pkt_len = wg_skb_len(skb) as usize;
         let pkt_data = wg_skb_data_ptr(skb);
@@ -430,7 +470,8 @@ unsafe fn do_rx(skb: VoidPtr, priv_: VoidPtr) -> i32 {
 }
 
 /// Handle handshake initiation (type 1) — we are the responder.
-unsafe fn handle_initiation(state: &mut DeviceState, pkt: &[u8], pkt_len: usize) {
+/// SAFETY: Called only from do_rx with socket lock held (single-threaded RX).
+unsafe fn handle_initiation(state: *mut DeviceState, pkt: &[u8], pkt_len: usize) {
     unsafe {
         if pkt_len < noise::INITIATION_SIZE { return; }
 
@@ -441,38 +482,49 @@ unsafe fn handle_initiation(state: &mut DeviceState, pkt: &[u8], pkt_len: usize)
         wg_get_random_bytes(idx_bytes.as_mut_ptr(), 4);
         let responder_index = u32::from_le_bytes(idx_bytes);
 
-        let psk = state.peers[0].as_ref().map(|p| p.psk).unwrap_or([0u8; 32]);
+        let psk = (*state).peers[0].as_ref().map(|p| p.psk).unwrap_or([0u8; 32]);
 
         let result = noise::process_initiation(
-            &state.static_secret,
-            &state.static_public,
+            &(*state).static_secret,
+            &(*state).static_public,
             msg,
             responder_index,
             &psk,
         );
 
-        if let Some((initiator_public, resp, keys)) = result {
+        if let Some((initiator_public, timestamp, resp, keys)) = result {
+            // H3: Timestamp replay protection — only accept strictly increasing timestamps.
+            // TAI64N is big-endian encoded, so byte-wise comparison gives correct ordering.
+            if let Some(ref peer) = (*state).peers[0] {
+                if peer.last_timestamp != [0u8; 12] && timestamp <= peer.last_timestamp {
+                    pr_info!("rustguard: rejecting replayed handshake initiation\n");
+                    return;
+                }
+            }
+
             pr_info!("rustguard: handshake from {:02x}{:02x}{:02x}{:02x}...\n",
                 initiator_public[0], initiator_public[1],
                 initiator_public[2], initiator_public[3]);
 
-            if let Some(ref peer) = state.peers[0] {
+            if let Some(ref peer) = (*state).peers[0] {
                 wg_socket_send(
-                    state.udp_sock,
+                    (*state).udp_sock,
                     resp.as_ptr(), noise::RESPONSE_SIZE as u32,
                     peer.endpoint_ip, peer.endpoint_port,
                 );
             }
 
-            // Register sender index for RX lookup.
-            let idx_slot = (keys.our_index as usize) & 0xFF;
-            state.index_map[idx_slot] = Some(0);
+            // H5: Register sender index for RX lookup (16-bit index space).
+            let idx_slot = (keys.our_index as usize) & 0xFFFF;
+            (*state).index_map[idx_slot] = Some(0);
 
-            if let Some(ref mut peer) = state.peers[0] {
+            if let Some(ref mut peer) = (*state).peers[0] {
                 peer.public_key = initiator_public;
                 peer.session = Some(keys);
                 peer.replay_window = replay::ReplayWindow::new();
                 peer.timers.session_started();
+                // H3: Update last accepted timestamp.
+                peer.last_timestamp = timestamp;
                 pr_info!("rustguard: session established (responder)\n");
             }
         }
@@ -480,32 +532,38 @@ unsafe fn handle_initiation(state: &mut DeviceState, pkt: &[u8], pkt_len: usize)
 }
 
 /// Handle handshake response (type 2) — we are the initiator.
-unsafe fn handle_response(state: &mut DeviceState, pkt: &[u8], pkt_len: usize) {
-    if pkt_len < noise::RESPONSE_SIZE { return; }
+/// SAFETY: Called only from do_rx with socket lock held (single-threaded RX).
+unsafe fn handle_response(state: *mut DeviceState, pkt: &[u8], pkt_len: usize) {
+    unsafe {
+        if pkt_len < noise::RESPONSE_SIZE { return; }
 
-    let resp: &[u8; noise::RESPONSE_SIZE] =
-        pkt[..noise::RESPONSE_SIZE].try_into().unwrap_or(&[0u8; noise::RESPONSE_SIZE]);
+        let resp: &[u8; noise::RESPONSE_SIZE] =
+            pkt[..noise::RESPONSE_SIZE].try_into().unwrap_or(&[0u8; noise::RESPONSE_SIZE]);
 
-    let pending = match state.peers[0].as_mut().and_then(|p| p.pending_handshake.take()) {
-        Some(p) => p,
-        None => { return; }
-    };
+        let pending = match (*state).peers[0].as_mut().and_then(|p| p.pending_handshake.take()) {
+            Some(p) => p,
+            None => { return; }
+        };
 
-    if let Some(keys) = noise::process_response(pending, &state.static_secret, resp) {
-        let idx_slot = (keys.our_index as usize) & 0xFF;
-        state.index_map[idx_slot] = Some(0);
+        if let Some(keys) = noise::process_response(pending, &(*state).static_secret, resp) {
+            // H5: 16-bit index space.
+            let idx_slot = (keys.our_index as usize) & 0xFFFF;
+            (*state).index_map[idx_slot] = Some(0);
 
-        if let Some(ref mut peer) = state.peers[0] {
-            peer.session = Some(keys);
-            peer.replay_window = replay::ReplayWindow::new();
-            peer.timers.session_started();
-            pr_info!("rustguard: session established (initiator)\n");
+            if let Some(ref mut peer) = (*state).peers[0] {
+                peer.session = Some(keys);
+                peer.replay_window = replay::ReplayWindow::new();
+                peer.timers.session_started();
+                pr_info!("rustguard: session established (initiator)\n");
+            }
         }
     }
 }
 
 /// Handle transport data (type 4) — decrypt with replay protection, inject into stack.
-unsafe fn handle_transport(state: &mut DeviceState, skb: VoidPtr, pkt: &[u8], pkt_len: usize) {
+/// SAFETY: Called only from do_rx with socket lock held (single-threaded RX).
+/// replay_window is exclusive to RX path due to socket lock serialization.
+unsafe fn handle_transport(state: *mut DeviceState, skb: VoidPtr, pkt: &[u8], pkt_len: usize) {
     unsafe {
         if pkt_len < WG_HEADER_SIZE + AEAD_TAG_SIZE {
             wg_kfree_skb(skb);
@@ -514,12 +572,13 @@ unsafe fn handle_transport(state: &mut DeviceState, skb: VoidPtr, pkt: &[u8], pk
 
         // Look up peer by receiver_index.
         let receiver_index = u32::from_le_bytes([pkt[4], pkt[5], pkt[6], pkt[7]]);
-        let idx_slot = (receiver_index as usize) & 0xFF;
-        let peer_idx = match state.index_map[idx_slot] {
+        // H5: 16-bit index space.
+        let idx_slot = (receiver_index as usize) & 0xFFFF;
+        let peer_idx = match (*state).index_map[idx_slot] {
             Some(idx) => idx,
             None => { wg_kfree_skb(skb); return; }
         };
-        let peer = match &mut state.peers[peer_idx] {
+        let peer = match &mut (*state).peers[peer_idx] {
             Some(p) => p,
             None => { wg_kfree_skb(skb); return; }
         };
@@ -570,7 +629,7 @@ unsafe fn handle_transport(state: &mut DeviceState, skb: VoidPtr, pkt: &[u8], pk
         let dest = skb_put(new_skb, plaintext_len as u32);
         core::ptr::copy_nonoverlapping(plaintext_buf.as_ptr(), dest, plaintext_len);
 
-        wg_net_rx(state.net_dev, new_skb);
+        wg_net_rx((*state).net_dev, new_skb);
     }
 }
 

@@ -80,11 +80,17 @@ impl ReplayWindow {
             self.bitmap.copy_within(..BITMAP_LEN - word_shift, word_shift);
             self.bitmap[..word_shift].fill(0);
         }
+        // H2: Shift bits LEFT within each word (toward higher bit positions = older).
+        // When the top counter advances by `shift`, every existing bit at position k
+        // must move to position k + shift. Within a word that means shifting LEFT.
+        // Carry propagates from word[0] (newest) to word[BITMAP_LEN-1] (oldest),
+        // so we iterate from high index to low, collecting overflow from the word
+        // below.
         if bit_shift > 0 {
             let mut carry = 0u64;
-            for word in self.bitmap.iter_mut().rev() {
-                let new_carry = *word << (64 - bit_shift);
-                *word = (*word >> bit_shift) | carry;
+            for i in (0..BITMAP_LEN).rev() {
+                let new_carry = self.bitmap[i] >> (64 - bit_shift);
+                self.bitmap[i] = (self.bitmap[i] << bit_shift) | carry;
                 carry = new_carry;
             }
         }
