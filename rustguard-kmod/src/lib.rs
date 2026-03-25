@@ -728,10 +728,13 @@ unsafe fn handle_transport(
         let plaintext_len = ct_len as u32 - AEAD_TAG_SIZE as u32;
         extern "C" {
             fn wg_skb_pull(skb: VoidPtr, len: u32);
-            fn wg_skb_trim(skb: VoidPtr, len: u32);
+            fn wg_skb_trim(skb: VoidPtr, len: u32) -> i32;
         }
         wg_skb_pull(skb, WG_HEADER_SIZE as u32);
-        wg_skb_trim(skb, plaintext_len);
+        if wg_skb_trim(skb, plaintext_len) != 0 {
+            wg_kfree_skb(skb);
+            return;
+        }
 
         wg_net_rx((*state).net_dev, skb);
     }

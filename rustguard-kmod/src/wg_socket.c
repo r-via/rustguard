@@ -165,9 +165,10 @@ u8 *wg_skb_data_ptr(struct sk_buff *skb)
 }
 EXPORT_SYMBOL_GPL(wg_skb_data_ptr);
 
-void wg_skb_trim(struct sk_buff *skb, unsigned int len);
-void wg_skb_trim(struct sk_buff *skb, unsigned int len)
+/* pskb_trim handles both linear and paged skbs. skb_trim BUGs on paged. */
+int wg_skb_trim(struct sk_buff *skb, unsigned int len);
+int wg_skb_trim(struct sk_buff *skb, unsigned int len)
 {
-	skb_trim(skb, len);
+	return pskb_trim(skb, len);
 }
 EXPORT_SYMBOL_GPL(wg_skb_trim);
