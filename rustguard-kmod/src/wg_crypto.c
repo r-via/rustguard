@@ -200,12 +200,9 @@ int wg_encrypt_skb(struct sk_buff *skb, u32 plaintext_off, u32 plaintext_len,
 	struct scatterlist sg;
 	int ret;
 
-	/* Ensure there's room for the tag after the plaintext. */
-	ret = skb_cow_data(skb, CHACHA20POLY1305_AUTHTAG_SIZE, NULL);
-	if (ret < 0)
-		return ret;
-
-	/* Build SG over the plaintext region of the skb. */
+	/* Build SG over the plaintext + tag region of the skb.
+	 * The skb was pre-allocated with room for the tag by
+	 * wg_skb_prepend_header, so no cow needed. */
 	sg_init_one(&sg, skb->data + plaintext_off,
 		    plaintext_len + CHACHA20POLY1305_AUTHTAG_SIZE);
 
