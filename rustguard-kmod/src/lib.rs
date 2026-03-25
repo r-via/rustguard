@@ -705,38 +705,41 @@ unsafe fn handle_transport(
             return;
         }
 
-        // Synchronous RX: decrypt to stack buffer, inject immediately.
-        // Proven stable at 2.13 Gbps. Async RX crashes on netif_rx from workqueue.
+        // Find the right key.
         let encrypted = &pkt[WG_HEADER_SIZE..];
         let encrypted_len = encrypted.len();
+        let mut key_ptr: *const u8 = core::ptr::null();
 
-        let mut plaintext_buf = [0u8; 2048];
-        if encrypted_len > plaintext_buf.len() {
+        if let Some(ref session) = peer.session {
+            // Quick AEAD verify with buffer API (softirq safe).
+            let mut verify = [0u8; 16];
+            if encrypted_len >= AEAD_TAG_SIZE && wg_chacha20poly1305_decrypt(
+                session.key_recv.as_ptr(), counter,
+                encrypted.as_ptr(), encrypted_len as u32,
+                core::ptr::null(), 0, verify.as_mut_ptr(),
+            ) == 0 {
+                key_ptr = session.key_recv.as_ptr();
+            }
+        }
+        if key_ptr.is_null() {
+            if let Some(ref prev) = peer.prev_session {
+                let mut verify = [0u8; 16];
+                if encrypted_len >= AEAD_TAG_SIZE && wg_chacha20poly1305_decrypt(
+                    prev.key_recv.as_ptr(), counter,
+                    encrypted.as_ptr(), encrypted_len as u32,
+                    core::ptr::null(), 0, verify.as_mut_ptr(),
+                ) == 0 {
+                    key_ptr = prev.key_recv.as_ptr();
+                }
+            }
+        }
+
+        if key_ptr.is_null() {
             wg_kfree_skb(skb);
             return;
         }
 
-        let mut decrypted = false;
-        if let Some(ref session) = peer.session {
-            if wg_chacha20poly1305_decrypt(
-                session.key_recv.as_ptr(), counter,
-                encrypted.as_ptr(), encrypted_len as u32,
-                core::ptr::null(), 0, plaintext_buf.as_mut_ptr(),
-            ) == 0 { decrypted = true; }
-        }
-        if !decrypted {
-            if let Some(ref prev) = peer.prev_session {
-                if wg_chacha20poly1305_decrypt(
-                    prev.key_recv.as_ptr(), counter,
-                    encrypted.as_ptr(), encrypted_len as u32,
-                    core::ptr::null(), 0, plaintext_buf.as_mut_ptr(),
-                ) == 0 { decrypted = true; }
-            }
-        }
-
-        wg_kfree_skb(skb);
-        if !decrypted { return; }
-
+        // AEAD verified — update state.
         peer.replay_window.update(counter);
         peer.timers.packet_received();
 
@@ -745,12 +748,25 @@ unsafe fn handle_transport(
             peer.endpoint_port = src_port;
         }
 
-        let plaintext_len = encrypted_len - AEAD_TAG_SIZE;
-        let new_skb = wg_alloc_skb(plaintext_len as u32);
-        if new_skb.is_null() { return; }
-        let dest = skb_put(new_skb, plaintext_len as u32);
-        core::ptr::copy_nonoverlapping(plaintext_buf.as_ptr(), dest, plaintext_len);
-        wg_net_rx((*state).net_dev, new_skb);
+        if wg_param_async_crypto() != 0 {
+            // Async: queue decrypt to workqueue (GFP_KERNEL alloc, parallel).
+            if wg_queue_decrypt(skb, WG_HEADER_SIZE as u32, counter,
+                                key_ptr, (*state).net_dev) != 0 {
+                wg_kfree_skb(skb);
+            }
+            // skb ownership transferred to workqueue
+        } else {
+            // Sync: decrypt + inject inline.
+            let plaintext_len = encrypted_len - AEAD_TAG_SIZE;
+            // We already verified AEAD — decrypt is guaranteed to succeed.
+            // Use the C pipeline for fresh skb creation.
+            let pt_skb = wg_decrypt_skb_full(skb, WG_HEADER_SIZE as u32,
+                                              counter, key_ptr);
+            wg_kfree_skb(skb);
+            if !pt_skb.is_null() {
+                wg_net_rx((*state).net_dev, pt_skb);
+            }
+        }
     }
 }
 
