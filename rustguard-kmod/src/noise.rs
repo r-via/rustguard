@@ -202,18 +202,14 @@ fn compute_mac1(responder_public: &[u8; 32], msg_bytes: &[u8]) -> [u8; 16] {
 /// Generate a TAI64N timestamp from kernel wall clock.
 fn tai64n_now() -> [u8; 12] {
     extern "C" {
-        fn ktime_get_real_ts64(ts: *mut Timespec64);
+        fn wg_ktime_get_real(secs: *mut i64, nsecs: *mut i64);
     }
-    #[repr(C)]
-    struct Timespec64 {
-        tv_sec: i64,
-        tv_nsec: i64,
-    }
-    let mut ts = Timespec64 { tv_sec: 0, tv_nsec: 0 };
-    unsafe { ktime_get_real_ts64(&mut ts) };
+    let mut secs: i64 = 0;
+    let mut nsecs: i64 = 0;
+    unsafe { wg_ktime_get_real(&mut secs, &mut nsecs) };
 
-    let tai_secs = (ts.tv_sec as u64) + TAI64_EPOCH_OFFSET;
-    let nanos = ts.tv_nsec as u32;
+    let tai_secs = (secs as u64) + TAI64_EPOCH_OFFSET;
+    let nanos = nsecs as u32;
     let mut buf = [0u8; 12];
     buf[..8].copy_from_slice(&tai_secs.to_be_bytes());
     buf[8..].copy_from_slice(&nanos.to_be_bytes());

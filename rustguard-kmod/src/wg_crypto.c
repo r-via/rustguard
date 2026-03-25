@@ -207,6 +207,21 @@ void wg_get_random_bytes(u8 *buf, u32 len)
 }
 EXPORT_SYMBOL_GPL(wg_get_random_bytes);
 
+/* ktime_get_ns / ktime_get_real_ts64 are inline — wrap for Rust FFI. */
+u64 wg_ktime_get_ns(void);
+u64 wg_ktime_get_ns(void) { return ktime_get_ns(); }
+EXPORT_SYMBOL_GPL(wg_ktime_get_ns);
+
+void wg_ktime_get_real(s64 *secs, s64 *nsecs);
+void wg_ktime_get_real(s64 *secs, s64 *nsecs)
+{
+	struct timespec64 ts;
+	ktime_get_real_ts64(&ts);
+	*secs = ts.tv_sec;
+	*nsecs = ts.tv_nsec;
+}
+EXPORT_SYMBOL_GPL(wg_ktime_get_real);
+
 int wg_crypto_init(void) { return 0; }
 EXPORT_SYMBOL_GPL(wg_crypto_init);
 

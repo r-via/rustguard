@@ -27,11 +27,11 @@ const REKEY_AFTER_MESSAGES: u64 = (1u64 << 60) - 1;
 const REJECT_AFTER_MESSAGES: u64 = u64::MAX - (1 << 13);
 
 extern "C" {
-    fn ktime_get_ns() -> u64;
+    fn wg_ktime_get_ns() -> u64;
 }
 
 fn now_ns() -> u64 {
-    unsafe { ktime_get_ns() }
+    unsafe { wg_ktime_get_ns() }
 }
 
 /// Per-peer timer state.

@@ -33,7 +33,7 @@ extern "C" {
         ad: *const u8, ad_len: u32, dst: *mut u8,
     ) -> i32;
     fn wg_get_random_bytes(buf: *mut u8, len: u32);
-    fn ktime_get_ns() -> u64;
+    fn wg_wg_ktime_get_ns() -> u64;
 }
 
 fn hash(chunks: &[&[u8]]) -> [u8; 32] {
@@ -79,13 +79,13 @@ impl CookieChecker {
         Self {
             our_public,
             secret: random_bytes(),
-            secret_generated: unsafe { ktime_get_ns() },
+            secret_generated: unsafe { wg_ktime_get_ns() },
             under_load: false,
         }
     }
 
     fn maybe_rotate_secret(&mut self) {
-        let now = unsafe { ktime_get_ns() };
+        let now = unsafe { wg_ktime_get_ns() };
         if now.saturating_sub(self.secret_generated) >= COOKIE_SECRET_LIFETIME_NS {
             self.secret = random_bytes();
             self.secret_generated = now;
@@ -169,7 +169,7 @@ impl CookieState {
 
         if ret == 0 {
             self.cookie = Some(cookie);
-            self.received = unsafe { ktime_get_ns() };
+            self.received = unsafe { wg_ktime_get_ns() };
             true
         } else {
             false
@@ -191,7 +191,7 @@ impl CookieState {
 
     fn is_fresh(&self) -> bool {
         if self.received == 0 { return false; }
-        let now = unsafe { ktime_get_ns() };
+        let now = unsafe { wg_ktime_get_ns() };
         now.saturating_sub(self.received) < COOKIE_SECRET_LIFETIME_NS
     }
 }
