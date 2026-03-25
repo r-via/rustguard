@@ -101,7 +101,6 @@ static void wg_encrypt_worker(struct work_struct *work)
 static void wg_decrypt_worker(struct work_struct *work)
 {
 	struct wg_decrypt_work *w = container_of(work, struct wg_decrypt_work, work);
-	struct scatterlist sg;
 	struct sk_buff *nskb;
 	u32 ct_len, pt_len;
 	u8 *ct_data;
