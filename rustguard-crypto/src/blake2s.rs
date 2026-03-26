@@ -18,6 +18,9 @@ pub fn hash(data: &[&[u8]]) -> [u8; 32] {
 ///
 /// This uses BLAKE2s's built-in keying mode, NOT HMAC.
 /// WireGuard uses this for MAC1/MAC2, but uses HMAC for the KDF.
+///
+/// Returns a full 32-byte MAC. For WireGuard MAC1/MAC2, callers must
+/// truncate the result to 16 bytes (e.g., `&mac[..16]`).
 pub fn mac(key: &[u8], data: &[&[u8]]) -> [u8; 32] {
     let mut m = Blake2sMac::<U32>::new_from_slice(key)
         .expect("BLAKE2s-MAC key must be <= 32 bytes");

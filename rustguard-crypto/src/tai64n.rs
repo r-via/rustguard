@@ -24,7 +24,11 @@ impl Tai64n {
 
     /// Create a timestamp from UNIX seconds and nanoseconds.
     /// Usable from both std and no_std contexts (kernel provides its own clock).
+    ///
+    /// `nanos` is clamped to 999_999_999 to preserve the 4-byte big-endian
+    /// encoding invariant that WireGuard's byte-wise timestamp ordering depends on.
     pub fn from_unix(secs: u64, nanos: u32) -> Self {
+        let nanos = nanos.min(999_999_999);
         let tai_secs = secs + TAI64_EPOCH_OFFSET;
         let mut buf = [0u8; 12];
         buf[..8].copy_from_slice(&tai_secs.to_be_bytes());

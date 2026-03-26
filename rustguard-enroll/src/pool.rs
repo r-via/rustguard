@@ -76,6 +76,9 @@ impl IpPool {
 
     /// Check if an address belongs to this pool.
     pub fn contains(&self, addr: Ipv4Addr) -> bool {
+        if self.prefix_len == 0 {
+            return true; // /0 matches everything.
+        }
         let a: u32 = addr.into();
         let mask = u32::MAX << (32 - self.prefix_len);
         (a & mask) == self.network

@@ -79,18 +79,27 @@ fn cmd_serve(args: &[String]) {
         match args[i].as_str() {
             "--pool" => {
                 i += 1;
-                pool = Some(args.get(i).cloned().unwrap_or_default());
+                pool = args.get(i).cloned().filter(|v| !v.is_empty()).or_else(|| {
+                    eprintln!("--pool requires a value");
+                    process::exit(1);
+                });
             }
             "--token" => {
                 i += 1;
-                token = Some(args.get(i).cloned().unwrap_or_default());
+                token = args.get(i).cloned().filter(|v| !v.is_empty()).or_else(|| {
+                    eprintln!("--token requires a value");
+                    process::exit(1);
+                });
             }
             "--open" => {
                 open_immediately = true;
             }
             "--xdp" => {
                 i += 1;
-                xdp_ifname = Some(args.get(i).cloned().unwrap_or_default());
+                xdp_ifname = args.get(i).cloned().filter(|v| !v.is_empty()).or_else(|| {
+                    eprintln!("--xdp requires a value");
+                    process::exit(1);
+                });
             }
             "--queues" => {
                 i += 1;
@@ -160,7 +169,10 @@ fn cmd_join(args: &[String]) {
         match args[i].as_str() {
             "--token" => {
                 i += 1;
-                token = Some(args.get(i).cloned().unwrap_or_default());
+                token = args.get(i).cloned().filter(|v| !v.is_empty()).or_else(|| {
+                    eprintln!("--token requires a value");
+                    process::exit(1);
+                });
             }
             s if !s.starts_with('-') && endpoint.is_none() => {
                 endpoint = Some(s.to_string());

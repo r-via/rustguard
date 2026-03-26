@@ -40,7 +40,17 @@ fn elapsed_since(ts: Timestamp) -> Duration {
 }
 
 #[cfg(not(feature = "std"))]
+static NO_STD_COUNTER: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+#[cfg(not(feature = "std"))]
+fn now() -> Timestamp {
+    NO_STD_COUNTER.fetch_add(1, core::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(not(feature = "std"))]
 fn elapsed_since(_ts: Timestamp) -> Duration {
+    // no_std: no real clock available. Return ZERO — the kernel module
+    // uses its own cookie checker with real timekeeping.
     Duration::ZERO
 }
 
@@ -192,8 +202,7 @@ impl CookieState {
                 let mut cookie = [0u8; COOKIE_LEN];
                 cookie.copy_from_slice(&plaintext);
                 self.cookie = Some(cookie);
-                #[cfg(feature = "std")]
-                { self.received = Some(now()); }
+                self.received = Some(now());
                 true
             }
             _ => false,

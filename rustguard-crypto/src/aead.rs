@@ -6,7 +6,7 @@ use chacha20poly1305::{
 
 pub const AEAD_TAG_LEN: usize = 16;
 
-/// Maximum WireGuard transport payload (MTU 1420 + tag).
+/// Maximum IP packet size (1500) + AEAD tag.
 pub const MAX_PACKET_SIZE: usize = 1500 + AEAD_TAG_LEN;
 
 /// Encrypt plaintext with ChaCha20-Poly1305.
@@ -66,6 +66,12 @@ pub fn xopen(key: &[u8; 32], nonce: &[u8; 24], aad: &[u8], ciphertext: &[u8]) ->
 /// buf must be at least plaintext.len() + AEAD_TAG_LEN bytes.
 /// Zero allocations.
 pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -> usize {
+    assert!(
+        buf.len() >= plaintext.len() + AEAD_TAG_LEN,
+        "buf too small: need {} bytes, got {}",
+        plaintext.len() + AEAD_TAG_LEN,
+        buf.len()
+    );
     let cipher = ChaCha20Poly1305::new(key.into());
     let nonce = build_nonce(counter);
     let len = plaintext.len();
@@ -81,7 +87,7 @@ pub fn seal_to(key: &[u8; 32], counter: u64, plaintext: &[u8], buf: &mut [u8]) -
 /// buf contains ciphertext + tag on input, plaintext on output.
 /// Zero allocations.
 pub fn open_to(key: &[u8; 32], counter: u64, buf: &mut [u8], ct_len: usize) -> Option<usize> {
-    if ct_len < AEAD_TAG_LEN {
+    if ct_len < AEAD_TAG_LEN || ct_len > buf.len() {
         return None;
     }
     let cipher = ChaCha20Poly1305::new(key.into());
