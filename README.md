@@ -346,3 +346,7 @@ sudo ip link set wg0 up
 ## License
 
 MIT OR Apache-2.0
+
+<!-- checked-by-anatoly -->
+[![Checked by Anatoly](https://img.shields.io/badge/checked%20by-Anatoly-blue)](https://github.com/r-via/anatoly)
+<!-- /checked-by-anatoly -->

@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "file": "rustguard-daemon/src/lib.rs",
-  "hash": "bfa5fbb0876807f4fbd0fe4ca4f11c1667d48853b7fdc42464812d57648a7aa3",
-  "symbols": [],
-  "language": "rust",
-  "parse_method": "ast",
-  "scanned_at": "2026-03-25T09:49:59.999Z"
-}

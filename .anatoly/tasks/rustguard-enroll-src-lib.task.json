@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "file": "rustguard-enroll/src/lib.rs",
-  "hash": "83fb933e1787b372d095cd3538b6f60c0396e526df8e7b4e25baa1fe6b9b63a5",
-  "symbols": [],
-  "language": "rust",
-  "parse_method": "ast",
-  "scanned_at": "2026-03-25T09:49:59.999Z"
-}
