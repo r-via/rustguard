@@ -8,3 +8,6 @@ rustguard-kmod/src/gen/
 inbox/
 .claude/worktrees/
 .anatoly/
+.anatoly.yml
+ANATOLY.md
+.env
