@@ -1,0 +1,75 @@
+# Anatoly configuration — v2.0 format (multi-provider)
+
+project:
+  name: rustguard
+
+scan:
+  include:
+    - "src/**/*.ts"
+    - "src/**/*.tsx"
+  exclude:
+    - "node_modules/**"
+    - "dist/**"
+    - "**/*.test.ts"
+    - "**/*.spec.ts"
+    - "kmod/**"
+    - "rustguard-kmod/**"
+    - "examples/**"
+    - "**/tun_echo.rs"
+  auto_detect: true
+
+# --- v2.0 providers ---
+
+providers:
+  anthropic:
+    mode: subscription
+    concurrency: 24
+  google:
+    mode: api
+    concurrency: 24
+
+models:
+  quality: anthropic/claude-sonnet-4-6
+  fast: anthropic/claude-haiku-4-5
+  deliberation: anthropic/claude-opus-4-6
+  code_summary: google/gemini-2.5-flash-lite
+
+agents:
+  enabled: true
+
+runtime:
+  timeout_per_file: 600
+  max_retries: 3
+  concurrency: 8
+  min_confidence: 70
+  max_stop_iterations: 3
+
+axes:
+  utility:
+    enabled: true
+    model: google/gemini-2.5-flash-lite
+  duplication:
+    enabled: true
+    model: google/gemini-2.5-flash-lite
+  correction:
+    enabled: true
+  overengineering:
+    enabled: true
+    model: google/gemini-2.5-flash-lite
+  tests:
+    enabled: true
+    skip:
+      - "rustguard-tun/src/linux.rs"
+      - "rustguard-tun/src/uring.rs"
+      - "rustguard-tun/src/bpf.rs"
+      - "rustguard-tun/src/xdp.rs"
+      - "rustguard-daemon/src/tunnel.rs"
+  best_practices:
+    enabled: true
+  documentation:
+    enabled: true
+
+notifications:
+  telegram:
+    enabled: true
+    username: "LeetPunk"

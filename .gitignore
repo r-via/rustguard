@@ -7,3 +7,4 @@ resume.sh
 rustguard-kmod/src/gen/
 inbox/
 .claude/worktrees/
+.anatoly/
